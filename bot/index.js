@@ -481,7 +481,7 @@ client.on("messageCreate", async message => {
 
   let thinkingMessage = null;
   try {
-    thinkingMessage = await message.reply({ content: ":Loading: Thinking", allowedMentions: { repliedUser: false } });
+    thinkingMessage = await message.reply({ content: "<a:Loading:1551872225496277042> Thinking", allowedMentions: { repliedUser: false } });
     const answer = await answerDiscordMessage(message);
     if (answer && thinkingMessage) {
       await thinkingMessage.edit({ content: answer, allowedMentions: { repliedUser: false } }).catch(() => {});
