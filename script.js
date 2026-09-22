@@ -1,8 +1,9 @@
+const API_BASE = window.location.hostname.endsWith("github.io") ? "https://socce7ball-support.onrender.com" : "";
 const $=id=>document.getElementById(id);
 let currentUser=null;
 
 async function api(path,options={}){
- const r=await fetch(path,{credentials:"include",...options,headers:{"Content-Type":"application/json",...(options.headers||{})}});
+ const r=await fetch(API_BASE+path,{credentials:"include",...options,headers:{"Content-Type":"application/json",...(options.headers||{})}});
  if(!r.ok)throw new Error(await r.text()); return r.json();
 }
 function showUser(u){
@@ -56,12 +57,12 @@ async function loadMessages(id){
 }
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));}
 
-$("loginBtn").onclick=()=>{ if(currentUser) return; location.href="/auth/discord"; };
+$("loginBtn").onclick=()=>{ if(currentUser) return; location.href=API_BASE+"/auth/discord"; };
 $("openBtn").onclick=async()=>{try{showUser(currentUser||await api("/api/me"));setView("new");$("app").scrollIntoView({behavior:"smooth"});await loadTickets();}catch{location.href="/auth/discord";}};
 $("ticketsTab").onclick=()=>setView("tickets");
 $("newTicketTab").onclick=()=>setView("new");
 $("staffTab").onclick=()=>{if(currentUser?.isStaff)setView("staff");};
-$("logoutBtn").onclick=()=>location.href="/auth/logout";
+$("logoutBtn").onclick=()=>location.href=API_BASE+"/auth/logout";
 $("submitBtn").onclick=async()=>{
  const s=$("status");s.textContent="Creating ticket...";
  try{const r=await api("/api/tickets",{method:"POST",body:JSON.stringify({category:$("category").value,topic:$("topic").value,message:$("message").value})});s.textContent="Ticket created: "+r.ticketId;$("message").value="";$("topic").value="";await loadTickets();await openTicket(r.ticketId);}
