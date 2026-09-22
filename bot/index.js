@@ -167,7 +167,7 @@ function ticketAccess(req, ticket) {
 }
 
 app.get("/health", (req, res) =>
-  res.json({ ok: true, bot: client.user?.tag || null, database: !!sheets })
+  res.json({ ok: true, bot: client.user?.tag || null, botAvatar: client.user?.displayAvatarURL({ extension: "png", size: 128 }) || null, database: !!sheets, geminiConfigured: !!(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY) })
 );
 
 app.get("/auth/discord", (req, res) => {
@@ -232,7 +232,8 @@ app.get("/auth/callback", async (req, res) => {
       isFounder: founder,
       isAdmin: !!member?.permissions.has(PermissionFlagsBits.Administrator),
       roleIds,
-      isGuildMember: !!member
+      isGuildMember: !!member,
+      botAvatar: client.user?.displayAvatarURL({ extension: "png", size: 128 }) || null
     };
 
     req.session.user = user;
@@ -285,7 +286,7 @@ app.post("/api/tickets", requireLogin, async (req,res)=>{
 
 app.get("/api/staff/tickets",requireLogin,async(req,res)=>{try{if(!isStaff(req))return res.status(403).json({error:"Staff only"});const ts=await getRows("Tickets"),users=await getRows("Users");res.json(ts.sort((a,b)=>String(b.updated_at).localeCompare(String(a.updated_at))).map(t=>({id:t.ticket_id,ownerId:t.discord_user_id,name:t.subject||("ticket-"+t.ticket_id.slice(0,8)),category:t.category,topic:t.subject,status:t.status,createdAt:t.created_at,updatedAt:t.updated_at,owner:{id:t.discord_user_id,username:t.discord_username,avatar:t.discord_avatar||users.find(u=>u.discord_user_id===t.discord_user_id)?.avatar||""}})));}catch(e){res.status(503).json({error:e.message})}});
 app.get("/api/blacklist",requireLogin,async(req,res)=>{try{if(!isStaff(req))return res.status(403).json({error:"Staff only"});res.json(await getRows("Blacklist"));}catch(e){res.status(503).json({error:e.message})}});
-app.post("/api/blacklist",requireLogin,async(req,res)=>{try{if(!isStaff(req))return res.status(403).json({error:"Staff only"});const id=String(req.body.userId||"").trim();if(!/^\\d{17,20}$/.test(id))return res.status(400).json({error:"Valid Discord user ID required"});const reason=String(req.body.reason||"Blacklisted by staff").trim().slice(0,500);const duration=Number(req.body.durationHours||0);const expiresAt=duration>0?new Date(Date.now()+duration*3600000).toISOString():"";const rows=await getRows("Blacklist");const old=rows.find(x=>x.discord_user_id===id);const obj={discord_user_id:id,discord_username:String(req.body.username||id).slice(0,100),reason,blacklisted_by:getAuthenticatedUser(req).username,created_at:new Date().toISOString(),expires_at:expiresAt};if(old)await updateRow("Blacklist",old.rowNumber,obj);else await appendRow("Blacklist",obj);res.json({ok:true,expiresAt});}catch(e){res.status(503).json({error:e.message})}});
+app.post("/api/blacklist",requireLogin,async(req,res)=>{try{if(!isStaff(req))return res.status(403).json({error:"Staff only"});const id=String(req.body.userId||"").trim();if(!/^\d{17,20}$/.test(id))return res.status(400).json({error:"Valid Discord user ID required"});const reason=String(req.body.reason||"Blacklisted by staff").trim().slice(0,500);const duration=Number(req.body.durationHours||0);const expiresAt=duration>0?new Date(Date.now()+duration*3600000).toISOString():"";const rows=await getRows("Blacklist");const old=rows.find(x=>x.discord_user_id===id);const obj={discord_user_id:id,discord_username:String(req.body.username||id).slice(0,100),reason,blacklisted_by:getAuthenticatedUser(req).username,created_at:new Date().toISOString(),expires_at:expiresAt};if(old)await updateRow("Blacklist",old.rowNumber,obj);else await appendRow("Blacklist",obj);res.json({ok:true,expiresAt});}catch(e){res.status(503).json({error:e.message})}});
 app.delete("/api/blacklist/:id",requireLogin,async(req,res)=>{try{if(!isStaff(req))return res.status(403).json({error:"Staff only"});const r=await getRows("Blacklist");const x=r.find(v=>v.discord_user_id===req.params.id);if(!x)return res.status(404).json({error:"Not blacklisted"});await deleteSheetRows("Blacklist",[x.rowNumber]);res.json({ok:true});}catch(e){res.status(503).json({error:e.message})}});
 app.post("/api/tickets/delete-all",requireLogin,async(req,res)=>{try{const u=getAuthenticatedUser(req);if(!u?.isFounder&&!u?.isAdmin)return res.status(403).json({error:"Founder/Administrator only"});const tabs=["Attachments","Messages","Tickets"];for(const tab of tabs){const rows=await getRows(tab);await deleteSheetRows(tab,rows.map(x=>x.rowNumber));}for(const [tab,headers] of Object.entries(SHEET_TABS)){if(["Tickets","Messages","Attachments"].includes(tab))await sheets.spreadsheets.values.update({spreadsheetId:SHEET_ID,range:tab+"!A1",valueInputOption:"RAW",requestBody:{values:[headers]}});}res.json({ok:true});}catch(e){res.status(503).json({error:e.message})}});
 app.get("/api/tickets/:id/messages",requireLogin,async(req,res)=>{
