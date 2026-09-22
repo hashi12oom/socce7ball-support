@@ -42,11 +42,15 @@ const client = new Client({
 });
 
 const guild = () => client.guilds.cache.get(process.env.DISCORD_GUILD_ID);
-const STAFF_ROLE_IDS = (process.env.STAFF_ROLE_IDS || "")
-  .split(",").map(x => x.trim()).filter(Boolean);
+const STAFF_ROLE_IDS = [...new Set([
+  process.env.FOUNDER_ROLE_ID,
+  process.env.STAFF_ROLE_ID,
+  ...(process.env.STAFF_ROLE_IDS || "").split(",")
+].map(x => String(x || "").trim()).filter(Boolean))];
 
 const SUPPORT_URL = process.env.SUPPORT_URL || "https://socce7ball-support.onrender.com";
-const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
+const OPENAI_API_KEY = process.env.AI_API_KEY || process.env.OPENAI_API_KEY;
+const openai = OPENAI_API_KEY ? new OpenAI({ apiKey: OPENAI_API_KEY }) : null;
 const botCooldowns = new Map();
 const BOT_COOLDOWN_MS = 3500;
 
@@ -361,13 +365,13 @@ async function answerDiscordMessage(message) {
   botCooldowns.set(message.author.id, now);
 
   const text = message.content
-    .replace(new RegExp(`<@!?\\${client.user.id}>`, "g"), "")
+    .replace(new RegExp(`<@!?${client.user.id}>`, "g"), "")
     .trim()
     .slice(0, 500);
 
   if (!text) return "Hey! Ask me a short Socce7Ball question or tag me with a simple game.";
 
-  if (/\\b(check|is|am|was|has)\\b.*\\b(ban|banned|banlist)\\b|\\b(ban|banned|banlist)\\b.*\\b(check|status|user|id)\\b/i.test(text)) {
+  if (/\b(check|is|am|was|has)\b.*\b(ban|banned|banlist)\b|\b(ban|banned|banlist)\b.*\b(check|status|user|id)\b/i.test(text)) {
     return checkBan(message, text);
   }
 
@@ -419,7 +423,9 @@ app.get(/.*/, (req, res) => res.sendFile(path.join(__dirname, "..", "index.html"
 (async () => {
   try {
     await initDatabase();
-    await client.login(process.env.DISCORD_TOKEN);
+    const discordToken = process.env.DISCORD_BOT_TOKEN || process.env.DISCORD_TOKEN;
+    if (!discordToken) throw Error("Missing DISCORD_BOT_TOKEN (or legacy DISCORD_TOKEN)");
+    await client.login(discordToken);
     app.listen(process.env.PORT || 3000, "0.0.0.0", () => console.log("Support server running"));
   } catch (e) {
     console.error("Startup error:", e);
