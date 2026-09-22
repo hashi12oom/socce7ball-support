@@ -7,7 +7,7 @@ const { Pool } = require("pg");
 const { GoogleGenAI } = require("@google/genai");
 const path = require("path");
 const crypto = require("crypto");
-const { Client, GatewayIntentBits } = require("discord.js");
+const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } = require("discord.js");
 
 const app = express();
 app.set("trust proxy", 1);
@@ -43,17 +43,22 @@ const client = new Client({
 });
 
 const guild = () => client.guilds.cache.get(process.env.DISCORD_GUILD_ID);
-const STAFF_ROLE_IDS = [...new Set([
+let STAFF_ROLE_IDS = [...new Set([
   process.env.FOUNDER_ROLE_ID,
   process.env.STAFF_ROLE_ID,
   ...(process.env.STAFF_ROLE_IDS || "").split(",")
 ].map(x => String(x || "").trim()).filter(Boolean))];
 
+const FOUNDER_ROLE_ID = String(process.env.FOUNDER_ROLE_ID || "").trim();
+
+function hasStaffRole(member) { return !!member && STAFF_ROLE_IDS.some(id => member.roles.cache.has(id)); }
+function isFounderOrAdminMember(member) { return !!member && ((FOUNDER_ROLE_ID && member.roles.cache.has(FOUNDER_ROLE_ID)) || member.permissions.has(PermissionFlagsBits.Administrator)); }
+
 const SUPPORT_URL = process.env.SUPPORT_URL || "https://socce7ball-support.onrender.com";
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.AI_API_KEY;
 const gemini = GEMINI_API_KEY ? new GoogleGenAI({ apiKey: GEMINI_API_KEY }) : null;
 const botCooldowns = new Map();
-const BOT_COOLDOWN_MS = 3500;
+const BOT_COOLDOWN_MS = 1500;
 
 async function initDatabase() {
   if (!pool) {
@@ -428,7 +433,79 @@ client.on("messageCreate", async message => {
   if (answer) await message.reply({ content: answer, allowedMentions: { repliedUser: false } }).catch(() => {});
 });
 
-client.once("ready", () => console.log("Logged in as " + client.user.tag));
+async function registerSlashCommands() {
+  const commands = [
+    new SlashCommandBuilder().setName("sendlink").setDescription("Send the Socce7Ball support website link"),
+    new SlashCommandBuilder().setName("userinfo").setDescription("View Discord user information").addUserOption(o => o.setName("user").setDescription("The user to inspect").setRequired(true)),
+    new SlashCommandBuilder().setName("checkban").setDescription("Check whether a Discord user is banned").addUserOption(o => o.setName("user").setDescription("The user to check").setRequired(true)),
+    new SlashCommandBuilder().setName("addstaff").setDescription("Add a role to the Socce7Ball staff roles").addRoleOption(o => o.setName("role").setDescription("The role to add").setRequired(true)),
+    new SlashCommandBuilder().setName("removestaff").setDescription("Remove a role from the Socce7Ball staff roles").addRoleOption(o => o.setName("role").setDescription("The role to remove").setRequired(true)),
+    new SlashCommandBuilder().setName("stafflist").setDescription("Show staff members and their staff roles")
+  ];
+  const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_BOT_TOKEN || process.env.DISCORD_TOKEN);
+  await rest.put(Routes.applicationGuildCommands(process.env.DISCORD_CLIENT_ID, process.env.DISCORD_GUILD_ID), { body: commands.map(c => c.toJSON()) });
+  console.log("Slash commands registered.");
+}
+
+async function handleSlashCommand(interaction) {
+  if (!interaction.isChatInputCommand()) return;
+  const member = interaction.member;
+  const command = interaction.commandName;
+  if (command === "sendlink") return interaction.reply({ content: SUPPORT_URL });
+  if (command === "userinfo") {
+    if (!hasStaffRole(member)) return interaction.reply({ content: "Staff only.", ephemeral: true });
+    const user = interaction.options.getUser("user", true);
+    const gm = await interaction.guild.members.fetch(user.id).catch(() => null);
+    const roles = gm ? gm.roles.cache.filter(r => r.id !== interaction.guild.id).map(r => "<@&" + r.id + ">").join(", ") || "No roles" : "Not currently in the server";
+    return interaction.reply({ content: ["**User:** " + (user.globalName || user.username), "**Username:** " + user.username, "**ID:** " + user.id, "**Roles:** " + roles, "**Created:** <t:" + Math.floor(user.createdTimestamp / 1000) + ":F>"].join("\n"), allowedMentions: { parse: [] } });
+  }
+  if (command === "checkban") {
+    if (!hasStaffRole(member)) return interaction.reply({ content: "Staff only.", ephemeral: true });
+    const user = interaction.options.getUser("user", true);
+    const ban = await interaction.guild.bans.fetch(user.id).catch(() => null);
+    if (ban) return interaction.reply("Yes — **" + (user.globalName || user.username) + "** is banned from Socce7Ball." + (ban.reason ? " Reason: " + ban.reason.slice(0, 250) : ""));
+    return interaction.reply("No — **" + (user.globalName || user.username) + "** is not on the current Socce7Ball ban list.");
+  }
+  if (command === "addstaff") {
+    if (!isFounderOrAdminMember(member)) return interaction.reply({ content: "Founder/Administrator only.", ephemeral: true });
+    const role = interaction.options.getRole("role", true);
+    if (role.managed) return interaction.reply({ content: "Managed/integration roles cannot be used as staff roles.", ephemeral: true });
+    if (STAFF_ROLE_IDS.includes(role.id)) return interaction.reply({ content: role.toString() + " is already a staff role.", ephemeral: true });
+    STAFF_ROLE_IDS.push(role.id);
+    return interaction.reply("Added " + role.toString() + " to the Socce7Ball staff roles.");
+  }
+  if (command === "removestaff") {
+    if (!isFounderOrAdminMember(member)) return interaction.reply({ content: "Founder/Administrator only.", ephemeral: true });
+    const role = interaction.options.getRole("role", true);
+    if (!STAFF_ROLE_IDS.includes(role.id)) return interaction.reply({ content: role.toString() + " is not currently a staff role.", ephemeral: true });
+    STAFF_ROLE_IDS = STAFF_ROLE_IDS.filter(id => id !== role.id);
+    return interaction.reply("Removed " + role.toString() + " from the Socce7Ball staff roles.");
+  }
+  if (command === "stafflist") {
+    if (!isFounderOrAdminMember(member)) return interaction.reply({ content: "Founder/Administrator only.", ephemeral: true });
+    await interaction.deferReply();
+    const members = await interaction.guild.members.fetch();
+    const staff = members.filter(m => hasStaffRole(m));
+    if (!staff.size) return interaction.editReply("No staff members found.");
+    const lines = Array.from(staff.values()).map(m => { const roles = m.roles.cache.filter(r => STAFF_ROLE_IDS.includes(r.id)).map(r => r.name).join(", "); return "• **" + (m.user.globalName || m.user.username) + "** — " + (roles || "Staff"); });
+    const body = lines.join("\n");
+    if (body.length <= 3900) return interaction.editReply({ embeds: [new EmbedBuilder().setTitle("Socce7Ball Staff List").setDescription(body).setFooter({ text: staff.size + " staff member" + (staff.size === 1 ? "" : "s") })] });
+    return interaction.editReply("**Socce7Ball Staff List**\n" + lines.slice(0, 60).join("\n") + "\n\nShowing the first 60 staff members.");
+  }
+}
+
+client.on("interactionCreate", interaction => {
+  handleSlashCommand(interaction).catch(async e => {
+    console.error("Slash command error:", e);
+    if (interaction.replied || interaction.deferred) await interaction.editReply("Something went wrong.").catch(() => {});
+    else await interaction.reply({ content: "Something went wrong.", ephemeral: true }).catch(() => {});
+  });
+});
+
+client.once("ready", async () => {
+  console.log("Logged in as " + client.user.tag);
+  try { await registerSlashCommands(); } catch (e) { console.error("Slash command registration error:", e); }
+});
 
 app.get(/.*/, (req, res) => res.sendFile(path.join(__dirname, "..", "index.html")));
 
