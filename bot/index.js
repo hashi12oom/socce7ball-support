@@ -30,7 +30,7 @@ async function initSheets() {
   const auth = new google.auth.GoogleAuth({
     credentials: {
       client_email: process.env.GOOGLE_CLIENT_EMAIL,
-      private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, "\\n")
+      private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, "\n")
     },
     scopes: ["https://www.googleapis.com/auth/spreadsheets"]
   });
@@ -78,7 +78,6 @@ const sessionConfig = {
   cookie: { secure: true, sameSite: "lax", httpOnly: true }
 };
 
-if (pool) sessionConfig.store = new pgSession({ pool, createTableIfMissing: true });
 app.use(session(sessionConfig));
 app.use(express.static(path.join(__dirname, "..")));
 
@@ -166,25 +165,14 @@ function isStaff(req) {
   return !!req.session.user?.isStaff;
 }
 
-async function saveUser(user) {
-  if (!pool) return;
-  await pool.query(
-    `INSERT INTO users (discord_id, username, avatar, is_staff, role_ids)
-     VALUES ($1,$2,$3,$4,$5)
-     ON CONFLICT (discord_id) DO UPDATE SET
-       username=EXCLUDED.username, avatar=EXCLUDED.avatar,
-       is_staff=EXCLUDED.is_staff, role_ids=EXCLUDED.role_ids,
-       updated_at=NOW()`,
-    [user.id, user.username, user.avatar, user.isStaff, user.roleIds]
-  );
-}
+
 
 function ticketAccess(req, ticket) {
   return isStaff(req) || ticket.discord_id === req.session.user.id;
 }
 
 app.get("/health", (req, res) =>
-  res.json({ ok: true, bot: client.user?.tag || null, database: !!pool })
+  res.json({ ok: true, bot: client.user?.tag || null, database: !!sheets })
 );
 
 app.get("/auth/discord", (req, res) => {
