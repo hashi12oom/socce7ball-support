@@ -1,9 +1,10 @@
 const API_BASE = window.location.hostname.endsWith("github.io") ? "https://socce7ball-support.onrender.com" : "";
 const $=id=>document.getElementById(id);
 let currentUser=null;
+let accessToken=localStorage.getItem("socce7ball_access_token")||"";
 
 async function api(path,options={}){
- const r=await fetch(API_BASE+path,{credentials:"include",...options,headers:{"Content-Type":"application/json",...(options.headers||{})}});
+ const r=await fetch(API_BASE+path,{credentials:"include",...options,headers:{"Content-Type":"application/json",...(accessToken?{"Authorization":"Bearer "+accessToken}:{}),...(options.headers||{})}});
  if(!r.ok)throw new Error(await r.text()); return r.json();
 }
 function showUser(u){
@@ -62,11 +63,23 @@ $("openBtn").onclick=async()=>{try{showUser(currentUser||await api("/api/me"));$
 $("ticketsTab").onclick=()=>setView("tickets");
 $("newTicketTab").onclick=()=>setView("new");
 $("staffTab").onclick=()=>{if(currentUser?.isStaff)setView("staff");};
-$("logoutBtn").onclick=()=>location.href=API_BASE+"/auth/logout";
+$("logoutBtn").onclick=()=>{localStorage.removeItem("socce7ball_access_token");accessToken="";location.href=API_BASE+"/auth/logout";};
 $("submitBtn").onclick=async()=>{
  const s=$("status");s.textContent="Creating ticket...";
  try{const r=await api("/api/tickets",{method:"POST",body:JSON.stringify({category:$("category").value,topic:$("topic").value,message:$("message").value})});s.textContent="Ticket created: "+r.ticketId;$("message").value="";$("topic").value="";await loadTickets();await openTicket(r.ticketId);}
  catch(e){s.textContent="Error: "+e.message;}
 };
 $("sendBtn").onclick=async()=>{try{const id=$("chat").dataset.id;const v=$("chatInput").value.trim();if(!v)return;await api("/api/tickets/"+id+"/messages",{method:"POST",body:JSON.stringify({message:v})});$("chatInput").value="";await loadMessages(id);}catch(e){alert(e.message);}};
-(async()=>{try{const u=await api("/api/me");showUser(u);setView("tickets");}catch{}})();
+(async()=>{
+ try{
+  const params=new URLSearchParams(location.search);
+  const handoff=params.get("auth");
+  if(handoff){
+    const r=await api("/auth/exchange",{method:"POST",body:JSON.stringify({token:handoff})});
+    accessToken=r.token; localStorage.setItem("socce7ball_access_token",accessToken);
+    history.replaceState({},document.title,location.pathname);
+    showUser(r.user); setView("tickets"); return;
+  }
+  const u=await api("/api/me"); showUser(u); setView("tickets");
+ }catch{}
+})();
