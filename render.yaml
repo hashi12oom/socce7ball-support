@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: socce7ball-support-bot
+    runtime: node
+    rootDir: bot
+    buildCommand: npm install
+    startCommand: node index.js
+    envVars:
+      - key: DISCORD_TOKEN
+        sync: false
+      - key: DISCORD_CLIENT_ID
+        value: "1551752936240054282"
+      - key: DISCORD_CLIENT_SECRET
+        sync: false
+      - key: DISCORD_GUILD_ID
+        value: "1551038040393384037"
+      - key: STAFF_ROLE_IDS
+        value: "1551038040401780855,1551038040393380854"
+      - key: DISCORD_REDIRECT_URI
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: FRONTEND_ORIGIN
+        sync: false
+      - key: SESSION_SECRET
+        sync: false
