@@ -485,11 +485,11 @@ async function answerDiscordMessage(message) {
   if (now - last < BOT_COOLDOWN_MS) return null;
   botCooldowns.set(message.author.id, now);
 
-  const text = message.content.replace(new RegExp(`<@!?\${client.user.id}>`, "g"), "").trim().slice(0, 700);
+  const text = message.content.replace(new RegExp(`<@!?${client.user.id}>`, "g"), "").trim().slice(0, 700);
   console.log("AI tag received from " + message.author.tag + ": " + text.slice(0, 120));
   if (!text) return SUPPORT_URL;
 
-  if (/\\b(check|is|am|was|has)\\b.*\\b(ban|banned|banlist)\\b|\\b(ban|banned|banlist)\\b.*\\b(check|status|user|id)\\b/i.test(text)) {
+  if (/\b(check|is|am|was|has)\b.*\b(ban|banned|banlist)\b|\b(ban|banned|banlist)\b.*\b(check|status|user|id)\b/i.test(text)) {
     return checkBan(message, text);
   }
 
