@@ -9,7 +9,7 @@ async function api(path,options={}){
 function escapeHtml(s){return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));}
 function setBotImage(url){if(!url)return;["brandBotImage","heroBotImage","sideBotImage","formBotImage","chatBotImage","footerBotImage"].forEach(id=>{const el=$(id);if(el)el.src=url;});}
 function showUser(u){
- currentUser=u;setBotImage(u.botAvatar);$("app").classList.remove("hidden");$("loginBtn").textContent=u.username||"Discord User";$("loginBtn").classList.add("logged-in");$("username").textContent=u.username||"Discord User";$("userid").textContent=u.id||"";
+ currentUser=u;setBotImage(u.botAvatar);$("app").classList.remove("hidden");$("loginBtn").innerHTML=(u.avatar?'<img src="'+escapeHtml(u.avatar)+'" alt=""><span>'+escapeHtml(u.username||"Discord User")+'</span>':'<span>'+escapeHtml(u.username||"Discord User")+'</span>');$("loginBtn").classList.add("logged-in");$("username").textContent=u.username||"Discord User";$("userid").textContent=u.id||"";
  if(u.avatar){$("avatar").src=u.avatar;$("avatar").classList.remove("hidden")}else $("avatar").classList.add("hidden");
  const badges=[];const rb=u.roleBadges||{};if(rb.founder)badges.push('<span class="role-badge founder">Founder</span>');else if(rb.staff||u.isStaff)badges.push('<span class="role-badge staff">Staff</span>');if(rb.premium)badges.push('<span class="role-badge premium">Premium</span>');$("roleBadges").innerHTML=badges.join("");
  $("staffSwitchWrap").classList.toggle("hidden",!u.isStaff);$("staffTab").classList.toggle("hidden",!u.isStaff);$("deleteAllBtn").classList.toggle("hidden",!(u.isFounder||u.isAdmin));
