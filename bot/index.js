@@ -101,7 +101,7 @@ app.post("/api/tickets/:id/:action",requireLogin,async(req,res)=>{
   }catch(e){res.status(500).json({error:e.message});}
 });
 
-app.get("*",(req,res)=>res.sendFile(path.join(__dirname,"..","index.html")));
+app.get(/.*/,(req,res)=>res.sendFile(path.join(__dirname,"..","index.html")));
 client.once("ready",()=>console.log("Logged in as "+client.user.tag));
 client.login(process.env.DISCORD_TOKEN);
 app.listen(process.env.PORT||3000,"0.0.0.0",()=>console.log("Support server running"));
