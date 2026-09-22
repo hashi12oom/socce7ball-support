@@ -11,7 +11,7 @@ const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, Permission
 
 const app = express();
 app.set("trust proxy", 1);
-app.use(express.json({ limit: "20kb" }));
+app.use(express.json({ limit: "4mb" }));
 const allowedOrigin = process.env.FRONTEND_ORIGIN || "https://hashi12oom.github.io";
 app.use(cors({ origin: allowedOrigin, credentials: true }));
 
