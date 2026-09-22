@@ -439,7 +439,7 @@ async function answerDiscordMessage(message) {
   botCooldowns.set(message.author.id, now);
   const text = message.content.replace(new RegExp(`<@!?${client.user.id}>`, "g"), "").trim().slice(0, 500);
   console.log("AI tag received from " + message.author.tag + ": " + text.slice(0, 120));
-  if (!text) return "Hey! Ask me a short Socce7Ball question or tag me with a simple game.";
+  if (!text) return SUPPORT_URL;
   if (/\\b(check|is|am|was|has)\\b.*\\b(ban|banned|banlist)\\b|\\b(ban|banned|banlist)\\b.*\\b(check|status|user|id)\\b/i.test(text)) return checkBan(message, text);
   const apiKey = String(process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "").trim();
   if (!apiKey) { console.error("Gemini AI error: GEMINI_API_KEY is missing."); return "I can't answer right now. Please create a ticket at " + SUPPORT_URL; }
