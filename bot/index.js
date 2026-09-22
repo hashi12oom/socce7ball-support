@@ -20,7 +20,7 @@ const SHEET_TABS = {
   Tickets: ["ticket_id","discord_user_id","discord_username","discord_avatar","category","subject","status","created_at","updated_at"],
   Messages: ["message_id","ticket_id","discord_user_id","username","message","sender_type","created_at","attachment_id","attachment_name","attachment_type"],
   Attachments: ["attachment_id","chunk_index","data"],
-  Blacklist: ["discord_user_id","discord_username","reason","blacklisted_by","created_at"],
+  Blacklist: ["discord_user_id","discord_username","reason","blacklisted_by","created_at","expires_at"],
   Users: ["discord_user_id","discord_username","avatar","roles","first_seen","last_seen"],
   Bans: ["discord_user_id","discord_username","ban_status","reason","banned_by","banned_at","expires_at"],
   StaffActions: ["action_id","staff_discord_id","staff_username","action","ticket_id","details","created_at"]
@@ -217,11 +217,20 @@ app.get("/auth/callback", async (req, res) => {
     const roleIds = member ? member.roles.cache.map(r => r.id) : [];
 
     // Do NOT require server membership. Banned users can still log in and appeal.
+    const roleNames = member ? member.roles.cache.filter(r => r.id !== g?.id).map(r => r.name) : [];
+    const founder = !!((FOUNDER_ROLE_ID && roleIds.includes(FOUNDER_ROLE_ID)) || member?.permissions.has(PermissionFlagsBits.Administrator));
+    const staff = !!STAFF_ROLE_IDS.some(id => roleIds.includes(id)) || founder;
+    const premium = roleNames.some(name => /premium/i.test(name));
+
     const user = {
       id: u.id,
       username: u.global_name || u.username,
+      roleNames,
+      roleBadges: { founder, staff, premium },
       avatar: u.avatar ? `https://cdn.discordapp.com/avatars/${u.id}/${u.avatar}.png` : null,
-      isStaff: STAFF_ROLE_IDS.some(id => roleIds.includes(id)) || (member?.permissions.has(PermissionFlagsBits.Administrator) ?? false) || (FOUNDER_ROLE_ID && roleIds.includes(FOUNDER_ROLE_ID)),
+      isStaff: staff,
+      isFounder: founder,
+      isAdmin: !!member?.permissions.has(PermissionFlagsBits.Administrator),
       roleIds,
       isGuildMember: !!member
     };
@@ -264,7 +273,8 @@ app.post("/api/tickets", requireLogin, async (req,res)=>{
     const topic=String(req.body.topic||"").trim().slice(0,200);
     const message=String(req.body.message||"").trim().slice(0,5000);
     if(!message)return res.status(400).json({error:"Message required"});
-    const blacklisted = (await getRows("Blacklist")).some(x => x.discord_user_id === req.session.user.id);
+    const nowMs = Date.now();
+    const blacklisted = (await getRows("Blacklist")).some(x => x.discord_user_id === req.session.user.id && (!x.expires_at || new Date(x.expires_at).getTime() > nowMs));
     if (blacklisted) return res.status(403).json({error:"You are blacklisted from opening tickets."});
     const id=crypto.randomUUID(), now=new Date().toISOString();
     await appendRow("Tickets",{ticket_id:id,discord_user_id:req.session.user.id,discord_username:getAuthenticatedUser(req).username,discord_avatar:req.session.user.avatar||"",category,subject:topic,status:"open",created_at:now,updated_at:now});
@@ -275,14 +285,18 @@ app.post("/api/tickets", requireLogin, async (req,res)=>{
 
 app.get("/api/staff/tickets",requireLogin,async(req,res)=>{try{if(!isStaff(req))return res.status(403).json({error:"Staff only"});const ts=await getRows("Tickets"),users=await getRows("Users");res.json(ts.sort((a,b)=>String(b.updated_at).localeCompare(String(a.updated_at))).map(t=>({id:t.ticket_id,ownerId:t.discord_user_id,name:t.subject||("ticket-"+t.ticket_id.slice(0,8)),category:t.category,topic:t.subject,status:t.status,createdAt:t.created_at,updatedAt:t.updated_at,owner:{id:t.discord_user_id,username:t.discord_username,avatar:t.discord_avatar||users.find(u=>u.discord_user_id===t.discord_user_id)?.avatar||""}})));}catch(e){res.status(503).json({error:e.message})}});
 app.get("/api/blacklist",requireLogin,async(req,res)=>{try{if(!isStaff(req))return res.status(403).json({error:"Staff only"});res.json(await getRows("Blacklist"));}catch(e){res.status(503).json({error:e.message})}});
+app.post("/api/blacklist",requireLogin,async(req,res)=>{try{if(!isStaff(req))return res.status(403).json({error:"Staff only"});const id=String(req.body.userId||"").trim();if(!/^\\d{17,20}$/.test(id))return res.status(400).json({error:"Valid Discord user ID required"});const reason=String(req.body.reason||"Blacklisted by staff").trim().slice(0,500);const duration=Number(req.body.durationHours||0);const expiresAt=duration>0?new Date(Date.now()+duration*3600000).toISOString():"";const rows=await getRows("Blacklist");const old=rows.find(x=>x.discord_user_id===id);const obj={discord_user_id:id,discord_username:String(req.body.username||id).slice(0,100),reason,blacklisted_by:getAuthenticatedUser(req).username,created_at:new Date().toISOString(),expires_at:expiresAt};if(old)await updateRow("Blacklist",old.rowNumber,obj);else await appendRow("Blacklist",obj);res.json({ok:true,expiresAt});}catch(e){res.status(503).json({error:e.message})}});
 app.delete("/api/blacklist/:id",requireLogin,async(req,res)=>{try{if(!isStaff(req))return res.status(403).json({error:"Staff only"});const r=await getRows("Blacklist");const x=r.find(v=>v.discord_user_id===req.params.id);if(!x)return res.status(404).json({error:"Not blacklisted"});await deleteSheetRows("Blacklist",[x.rowNumber]);res.json({ok:true});}catch(e){res.status(503).json({error:e.message})}});
 app.post("/api/tickets/delete-all",requireLogin,async(req,res)=>{try{const u=getAuthenticatedUser(req);if(!u?.isFounder&&!u?.isAdmin)return res.status(403).json({error:"Founder/Administrator only"});const tabs=["Attachments","Messages","Tickets"];for(const tab of tabs){const rows=await getRows(tab);await deleteSheetRows(tab,rows.map(x=>x.rowNumber));}for(const [tab,headers] of Object.entries(SHEET_TABS)){if(["Tickets","Messages","Attachments"].includes(tab))await sheets.spreadsheets.values.update({spreadsheetId:SHEET_ID,range:tab+"!A1",valueInputOption:"RAW",requestBody:{values:[headers]}});}res.json({ok:true});}catch(e){res.status(503).json({error:e.message})}});
 app.get("/api/tickets/:id/messages",requireLogin,async(req,res)=>{
   try{
-    const t=(await getRows("Tickets")).find(x=>x.ticket_id===req.params.id); if(!t)return res.status(404).json({error:"Ticket not found"});
+    const tickets=await getRows("Tickets");const t=tickets.find(x=>x.ticket_id===req.params.id);if(!t)return res.status(404).json({error:"Ticket not found"});
     if(!isStaff(req)&&t.discord_user_id!==req.session.user.id)return res.status(403).json({error:"No access"});
-    const ms=(await getRows("Messages")).filter(x=>x.ticket_id===req.params.id);
-    const out=[]; for(const m of ms){let attachment=null;if(m.attachment_id){const chunks=(await getRows("Attachments")).filter(x=>x.attachment_id===m.attachment_id).sort((a,b)=>Number(a.chunk_index)-Number(b.chunk_index));attachment={name:m.attachment_name,type:m.attachment_type,data:chunks.map(x=>x.data).join("")};} const u=(await getRows("Users")).find(x=>x.discord_user_id===m.discord_user_id);out.push({id:m.message_id,discordId:m.discord_user_id,author:m.username,avatar:u?.avatar||"",content:m.message,createdAt:m.created_at,attachment});} res.json(out);
+    const [ms,attachments,users]=await Promise.all([getRows("Messages"),getRows("Attachments"),getRows("Users")]);
+    const userMap=new Map(users.map(u=>[u.discord_user_id,u]));const attachmentMap=new Map();
+    for(const a of attachments){if(!attachmentMap.has(a.attachment_id))attachmentMap.set(a.attachment_id,[]);attachmentMap.get(a.attachment_id).push(a);}
+    const out=ms.filter(m=>m.ticket_id===req.params.id).map(m=>{let attachment=null;if(m.attachment_id){const chunks=(attachmentMap.get(m.attachment_id)||[]).sort((a,b)=>Number(a.chunk_index)-Number(b.chunk_index));attachment={name:m.attachment_name,type:m.attachment_type,data:chunks.map(x=>x.data).join("")};}const u=userMap.get(m.discord_user_id);return{id:m.message_id,discordId:m.discord_user_id,author:m.username,avatar:u?.avatar||"",content:m.message,createdAt:m.created_at,attachment};});
+    res.json(out);
   }catch(e){res.status(503).json({error:e.message});}
 });
 app.post("/api/tickets/:id/messages",requireLogin,async(req,res)=>{
@@ -309,7 +323,7 @@ app.post("/api/tickets/:id/:action",requireLogin,async(req,res)=>{
     else if(action==="rename"){const n=String(req.body.name||"").trim().slice(0,80);if(!n)return res.status(400).json({error:"Name required"});t.subject=n;}
     else if(action==="blacklist"){
       const existing=(await getRows("Blacklist")).find(x=>x.discord_user_id===t.discord_user_id);
-      if(!existing) await appendRow("Blacklist",{discord_user_id:t.discord_user_id,discord_username:t.discord_username,reason:String(req.body.reason||"Blacklisted by staff").slice(0,500),blacklisted_by:getAuthenticatedUser(req).username,created_at:new Date().toISOString()});
+      if(!existing) await appendRow("Blacklist",{discord_user_id:t.discord_user_id,discord_username:t.discord_username,reason:String(req.body.reason||"Blacklisted by staff").slice(0,500),blacklisted_by:getAuthenticatedUser(req).username,created_at:new Date().toISOString(),expires_at:String(req.body.expiresAt||"")});
       return res.json({ok:true});
     } else return res.status(400).json({error:"Unknown action"});
     t.updated_at=new Date().toISOString(); await updateRow("Tickets",t.rowNumber,t); res.json({ok:true});
