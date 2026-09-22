@@ -372,7 +372,7 @@ async function answerDiscordMessage(message) {
   botCooldowns.set(message.author.id, now);
 
   const text = message.content
-    .replace(new RegExp(\`<@!?\${client.user.id}>\`, "g"), "")
+    .replace(new RegExp(\`<@!?${client.user.id}>\`, "g"), "")
     .trim()
     .slice(0, 500);
 
