@@ -4,30 +4,22 @@
 <body>
 <header class="top"><div class="brand">SOCCE7BALL <span>SUPPORT</span></div><button id="loginBtn">Login with Discord</button></header>
 <main>
-<section class="hero" id="home">
-<p class="eyebrow">SOCCE7BALL SUPPORT CENTER</p><h1>How can we help?</h1><p>Open and chat in your support ticket from any device.</p>
-<button class="primary" id="openBtn">Open a Ticket</button>
-</section>
-
+<section class="hero" id="home"><p class="eyebrow">SOCCE7BALL SUPPORT CENTER</p><h1>How can we help?</h1><p>Open and chat in your support ticket from any device.</p><button class="primary" id="openBtn">Open a Ticket</button></section>
 <section id="app" class="panel hidden">
-<div class="userbar"><img id="avatar" alt="Discord avatar"><div><b id="username">User</b><small id="userid"></small></div><button id="logoutBtn">Log out</button></div>
+<div class="userbar"><img id="avatar" alt=""><div><b id="username">User</b><small id="userid"></small></div><button id="logoutBtn">Log out</button></div>
 <nav class="tabs"><button class="tab active" id="ticketsTab">My Tickets</button><button class="tab hidden" id="staffTab">Staff</button><button class="tab" id="newTicketTab">Open Ticket</button></nav>
-
-<section id="ticketListView">
-<h2>Your Tickets</h2><div id="tickets">Loading...</div>
+<section id="ticketListView"><div class="sectionHead"><div><h2>Your Tickets</h2><p class="muted">Your support conversations.</p></div></div><div id="tickets">Loading...</div></section>
+<section id="newTicketView" class="hidden"><h2>New Ticket</h2><label>Category<select id="category"><option value="banned-appeal">Banned Appeal</option><option value="question">Question</option><option value="member-report">Member Report</option><option value="staff-report">Staff Report</option><option value="other">Other</option></select></label><label>Topic<input id="topic" placeholder="What do you need help with?"></label><label>Message<textarea id="message" rows="6" placeholder="Explain your issue..."></textarea></label><button class="primary" id="submitBtn">Create Ticket</button><p id="status"></p></section>
+<section id="staffView" class="hidden">
+<div class="sectionHead"><div><h2>Staff Mode</h2><p class="muted">Search and manage every support ticket.</p></div><button class="danger hidden" id="deleteAllBtn">Delete All Tickets</button></div>
+<div class="filters"><input id="staffSearch" placeholder="Search by player, username, ID, topic..."><select id="staffCategory"><option value="">All categories</option><option value="banned-appeal">Banned Appeal</option><option value="question">Question</option><option value="member-report">Member Report</option><option value="staff-report">Staff Report</option><option value="other">Other</option></select><select id="staffStatus"><option value="">All statuses</option><option value="open">Open</option><option value="accepted">Accepted</option><option value="declined">Declined</option><option value="closed">Closed</option><option value="resolved">Resolved</option></select><button class="tab" id="blacklistTab">Blacklist</button></div>
+<div id="staffTickets">Loading...</div>
+<div id="blacklistView" class="hidden"><div class="sectionHead"><div><h2>Blacklist</h2><p class="muted">Staff can remove a blacklist entry here.</p></div></div><div id="blacklistItems">Loading...</div></div>
 </section>
-
-<section id="newTicketView" class="hidden">
-<h2>New Ticket</h2>
-<label>Category<select id="category"><option value="banned-appeal">Banned Appeal</option><option value="question">Question</option><option value="member-report">Member Report</option><option value="staff-report">Staff Report</option><option value="other">Other</option></select></label>
-<label>Topic<input id="topic" placeholder="What do you need help with?"></label>
-<label>Message<textarea id="message" rows="6" placeholder="Explain your issue..."></textarea></label>
-<button class="primary" id="submitBtn">Create Ticket</button><p id="status"></p>
+<section id="chat" class="chat hidden">
+<div class="chatHead"><button class="backBtn" id="backBtn">Back</button><div><h2 id="chatTitle">Ticket</h2><small id="chatMeta"></small></div><div class="chatActions" id="chatActions"></div></div>
+<div id="messages" class="messages"></div>
+<div class="composer"><input id="fileInput" type="file" class="hidden"><button class="attachBtn" id="attachBtn" title="Attach file">Attach</button><input id="chatInput" placeholder="Type a message..."><button class="primary" id="sendBtn">Send</button></div><small id="fileName" class="muted"></small>
 </section>
-
-<section id="staffView" class="hidden"><h2>Staff Tickets</h2><div id="staffTickets">Loading...</div></section>
-<section id="chat" class="chat hidden"><h2 id="chatTitle">Ticket</h2><div id="messages" class="messages"></div><div class="composer"><input id="chatInput" placeholder="Type a message..."><button class="primary" id="sendBtn">Send</button></div></section>
 </section>
-</main>
-<footer>Socce7Ball Support</footer><script src="/script.js"></script>
-</body></html>
+</main><footer>Socce7Ball Support</footer><script src="/script.js"></script></body></html>
