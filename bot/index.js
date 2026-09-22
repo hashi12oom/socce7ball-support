@@ -25,15 +25,26 @@ const SHEET_TABS = {
 };
 let sheets = null;
 
+function getGooglePrivateKey() {
+  let value = String(process.env.GOOGLE_PRIVATE_KEY || "").trim();
+  if (value.startsWith("{")) {
+    try { value = JSON.parse(value).private_key || value; } catch {}
+  }
+  value = value.replace(/^"|"$/g, "").replace(/\\n/g, "\n");
+  return value;
+}
+
 async function initSheets() {
   if (!SHEET_ID || !process.env.GOOGLE_CLIENT_EMAIL || !process.env.GOOGLE_PRIVATE_KEY) {
     console.log("Google Sheets is not configured. Set GOOGLE_SHEET_ID, GOOGLE_CLIENT_EMAIL, and GOOGLE_PRIVATE_KEY.");
     return;
   }
+  const privateKey = getGooglePrivateKey();
+  if (!privateKey.includes("BEGIN PRIVATE KEY")) throw Error("GOOGLE_PRIVATE_KEY is not a valid service-account private key");
   const auth = new google.auth.GoogleAuth({
     credentials: {
       client_email: process.env.GOOGLE_CLIENT_EMAIL,
-      private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, "\n")
+      private_key: privateKey
     },
     scopes: ["https://www.googleapis.com/auth/spreadsheets"]
   });
