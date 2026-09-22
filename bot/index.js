@@ -480,23 +480,13 @@ client.on("messageCreate", async message => {
   if (!client.user || !message.mentions.has(client.user.id)) return;
 
   let thinkingMessage = null;
-  let thinkingTimer = null;
   try {
     thinkingMessage = await message.reply({ content: ":Loading: Thinking", allowedMentions: { repliedUser: false } });
-    const frames = [":Loading: Thinking", ":Loading: Thinking.", ":Loading: Thinking..", ":Loading: Thinking..."];
-    let frame = 0;
-    thinkingTimer = setInterval(() => {
-      frame = (frame + 1) % frames.length;
-      thinkingMessage?.edit({ content: frames[frame], allowedMentions: { repliedUser: false } }).catch(() => {});
-    }, 1100);
     const answer = await answerDiscordMessage(message);
-    if (thinkingTimer) clearInterval(thinkingTimer);
-    thinkingTimer = null;
     if (answer && thinkingMessage) {
       await thinkingMessage.edit({ content: answer, allowedMentions: { repliedUser: false } }).catch(() => {});
     }
   } catch (e) {
-    if (thinkingTimer) clearInterval(thinkingTimer);
     console.error("Discord AI reply error:", e.message);
     if (thinkingMessage) await thinkingMessage.edit({ content: "I can't answer right now. Please create a ticket at " + SUPPORT_URL, allowedMentions: { repliedUser: false } }).catch(() => {});
   }
