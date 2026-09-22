@@ -18,7 +18,9 @@ app.use(cors({ origin: allowedOrigin, credentials: true }));
 const SHEET_ID = process.env.GOOGLE_SHEET_ID;
 const SHEET_TABS = {
   Tickets: ["ticket_id","discord_user_id","discord_username","discord_avatar","category","subject","status","created_at","updated_at"],
-  Messages: ["message_id","ticket_id","discord_user_id","username","message","sender_type","created_at"],
+  Messages: ["message_id","ticket_id","discord_user_id","username","message","sender_type","created_at","attachment_id","attachment_name","attachment_type"],
+  Attachments: ["attachment_id","chunk_index","data"],
+  Blacklist: ["discord_user_id","discord_username","reason","blacklisted_by","created_at"],
   Users: ["discord_user_id","discord_username","avatar","roles","first_seen","last_seen"],
   Bans: ["discord_user_id","discord_username","ban_status","reason","banned_by","banned_at","expires_at"],
   StaffActions: ["action_id","staff_discord_id","staff_username","action","ticket_id","details","created_at"]
@@ -55,7 +57,8 @@ async function initSheets() {
   if (requests.length) await sheets.spreadsheets.batchUpdate({ spreadsheetId: SHEET_ID, requestBody: { requests } });
   for (const [tab, headers] of Object.entries(SHEET_TABS)) {
     const r = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: tab + "!1:1" }).catch(() => ({ data: {} }));
-    if (!r.data.values?.[0]?.length) await sheets.spreadsheets.values.update({ spreadsheetId: SHEET_ID, range: tab + "!A1", valueInputOption: "RAW", requestBody: { values: [headers] } });
+    const currentHeaders = r.data.values?.[0] || [];
+    if (!currentHeaders.length || headers.some((h,i) => currentHeaders[i] !== h)) await sheets.spreadsheets.values.update({ spreadsheetId: SHEET_ID, range: tab + "!A1", valueInputOption: "RAW", requestBody: { values: [headers] } });
   }
   console.log("Google Sheets database ready.");
 }
@@ -68,6 +71,15 @@ async function getRows(tab) {
 async function appendRow(tab,obj){
   if(!sheets) throw Error("Google Sheets database is not connected");
   await sheets.spreadsheets.values.append({spreadsheetId:SHEET_ID,range:tab+"!A:Z",valueInputOption:"RAW",requestBody:{values:[SHEET_TABS[tab].map(h=>obj[h]??"")]}});
+}
+async function deleteSheetRows(tab,rowNumbers){
+  if(!sheets) throw Error("Google Sheets database is not connected");
+  if(!rowNumbers.length) return;
+  const meta=await sheets.spreadsheets.get({spreadsheetId:SHEET_ID});
+  const sh=(meta.data.sheets||[]).find(s=>s.properties.title===tab); if(!sh) return;
+  const sheetId=sh.properties.sheetId;
+  const requests=[...new Set(rowNumbers)].sort((a,b)=>b-a).map(row=>({deleteDimension:{range:{sheetId,dimension:"ROWS",startIndex:row-1,endIndex:row}}}));
+  await sheets.spreadsheets.batchUpdate({spreadsheetId:SHEET_ID,requestBody:{requests}});
 }
 async function updateRow(tab,rowNumber,obj){
   if(!sheets) throw Error("Google Sheets database is not connected");
@@ -254,25 +266,30 @@ app.post("/api/tickets", requireLogin, async (req,res)=>{
     if(!message)return res.status(400).json({error:"Message required"});
     const id=crypto.randomUUID(), now=new Date().toISOString();
     await appendRow("Tickets",{ticket_id:id,discord_user_id:req.session.user.id,discord_username:getAuthenticatedUser(req).username,discord_avatar:req.session.user.avatar||"",category,subject:topic,status:"open",created_at:now,updated_at:now});
-    await appendRow("Messages",{message_id:crypto.randomUUID(),ticket_id:id,discord_user_id:req.session.user.id,username:req.session.user.username,message,sender_type:"user",created_at:now});
+    await appendRow("Messages",{message_id:crypto.randomUUID(),ticket_id:id,discord_user_id:req.session.user.id,username:req.session.user.username,message,sender_type:"user",created_at:now,attachment_id:"",attachment_name:"",attachment_type:""});
     res.json({ticketId:id});
   }catch(e){res.status(503).json({error:e.message});}
 });
+
+app.get("/api/staff/tickets",requireLogin,async(req,res)=>{try{if(!isStaff(req))return res.status(403).json({error:"Staff only"});const ts=await getRows("Tickets"),users=await getRows("Users");res.json(ts.sort((a,b)=>String(b.updated_at).localeCompare(String(a.updated_at))).map(t=>({id:t.ticket_id,ownerId:t.discord_user_id,name:t.subject||("ticket-"+t.ticket_id.slice(0,8)),category:t.category,topic:t.subject,status:t.status,createdAt:t.created_at,updatedAt:t.updated_at,owner:{id:t.discord_user_id,username:t.discord_username,avatar:t.discord_avatar||users.find(u=>u.discord_user_id===t.discord_user_id)?.avatar||""}})));}catch(e){res.status(503).json({error:e.message})}});
+app.get("/api/blacklist",requireLogin,async(req,res)=>{try{if(!isStaff(req))return res.status(403).json({error:"Staff only"});res.json(await getRows("Blacklist"));}catch(e){res.status(503).json({error:e.message})}});
+app.delete("/api/blacklist/:id",requireLogin,async(req,res)=>{try{if(!isStaff(req))return res.status(403).json({error:"Staff only"});const r=await getRows("Blacklist");const x=r.find(v=>v.discord_user_id===req.params.id);if(!x)return res.status(404).json({error:"Not blacklisted"});await deleteSheetRows("Blacklist",[x.rowNumber]);res.json({ok:true});}catch(e){res.status(503).json({error:e.message})}});
+app.post("/api/tickets/delete-all",requireLogin,async(req,res)=>{try{const u=getAuthenticatedUser(req);if(!u?.isFounder&&!u?.isAdmin)return res.status(403).json({error:"Founder/Administrator only"});const tabs=["Attachments","Messages","Tickets"];for(const tab of tabs){const rows=await getRows(tab);await deleteSheetRows(tab,rows.map(x=>x.rowNumber));}for(const [tab,headers] of Object.entries(SHEET_TABS)){if(["Tickets","Messages","Attachments"].includes(tab))await sheets.spreadsheets.values.update({spreadsheetId:SHEET_ID,range:tab+"!A1",valueInputOption:"RAW",requestBody:{values:[headers]}});}res.json({ok:true});}catch(e){res.status(503).json({error:e.message})}});
 app.get("/api/tickets/:id/messages",requireLogin,async(req,res)=>{
   try{
     const t=(await getRows("Tickets")).find(x=>x.ticket_id===req.params.id); if(!t)return res.status(404).json({error:"Ticket not found"});
     if(!isStaff(req)&&t.discord_user_id!==req.session.user.id)return res.status(403).json({error:"No access"});
     const ms=(await getRows("Messages")).filter(x=>x.ticket_id===req.params.id);
-    res.json(ms.map(m=>({id:m.message_id,discordId:m.discord_user_id,author:m.username,avatar:"",content:m.message,createdAt:m.created_at})));
+    const out=[]; for(const m of ms){let attachment=null;if(m.attachment_id){const chunks=(await getRows("Attachments")).filter(x=>x.attachment_id===m.attachment_id).sort((a,b)=>Number(a.chunk_index)-Number(b.chunk_index));attachment={name:m.attachment_name,type:m.attachment_type,data:chunks.map(x=>x.data).join("")};} const u=(await getRows("Users")).find(x=>x.discord_user_id===m.discord_user_id);out.push({id:m.message_id,discordId:m.discord_user_id,author:m.username,avatar:u?.avatar||"",content:m.message,createdAt:m.created_at,attachment});} res.json(out);
   }catch(e){res.status(503).json({error:e.message});}
 });
 app.post("/api/tickets/:id/messages",requireLogin,async(req,res)=>{
   try{
-    const content=String(req.body.message||"").trim().slice(0,5000); if(!content)return res.status(400).json({error:"Message required"});
+    const content=String(req.body.message||"").trim().slice(0,5000); const attachment=req.body.attachment&&typeof req.body.attachment==="object"?req.body.attachment:null; if(!content&&!attachment)return res.status(400).json({error:"Message or attachment required"}); if(attachment&&(!attachment.data||String(attachment.data).length>3000000))return res.status(400).json({error:"File is too large. Maximum 2 MB."});
     const rows=await getRows("Tickets"),t=rows.find(x=>x.ticket_id===req.params.id); if(!t)return res.status(404).json({error:"Ticket not found"});
     if(!isStaff(req)&&t.discord_user_id!==req.session.user.id)return res.status(403).json({error:"No access"});
     if(t.status==="closed")return res.status(400).json({error:"Ticket is closed"});
-    const now=new Date().toISOString(); await appendRow("Messages",{message_id:crypto.randomUUID(),ticket_id:req.params.id,discord_user_id:req.session.user.id,username:req.session.user.username,message:content,sender_type:isStaff(req)?"staff":"user",created_at:now});
+    const now=new Date().toISOString(); const messageId=crypto.randomUUID(); const attachmentId=attachment?crypto.randomUUID():""; await appendRow("Messages",{message_id:messageId,ticket_id:req.params.id,discord_user_id:req.session.user.id,username:req.session.user.username,message:content,sender_type:isStaff(req)?"staff":"user",created_at:now,attachment_id:attachmentId,attachment_name:attachment?.name||"",attachment_type:attachment?.type||""}); if(attachment){const data=String(attachment.data); const chunkSize=45000; for(let i=0;i<data.length;i+=chunkSize) await appendRow("Attachments",{attachment_id:attachmentId,chunk_index:Math.floor(i/chunkSize),data:data.slice(i,i+chunkSize)});}
     t.updated_at=now; await updateRow("Tickets",t.rowNumber,t); res.json({ok:true});
   }catch(e){res.status(503).json({error:e.message});}
 });
@@ -280,12 +297,24 @@ app.post("/api/tickets/:id/:action",requireLogin,async(req,res)=>{
   try{
     if(!isStaff(req))return res.status(403).json({error:"Staff only"});
     const rows=await getRows("Tickets"),t=rows.find(x=>x.ticket_id===req.params.id); if(!t)return res.status(404).json({error:"Ticket not found"});
-    const action=req.params.action; if(["close","reopen","resolve","decline"].includes(action))t.status=action==="reopen"?"open":action==="close"?"closed":action==="resolve"?"resolved":"declined";
+    const action=req.params.action;
+    if(action==="delete"){
+      await deleteSheetRows("Messages",(await getRows("Messages")).filter(x=>x.ticket_id===t.ticket_id).map(x=>x.rowNumber));
+      await deleteSheetRows("Attachments",(await getRows("Attachments")).filter(x=>{const ms=[]; return false;}).map(x=>x.rowNumber));
+      await deleteSheetRows("Tickets",[t.rowNumber]);
+      return res.json({ok:true});
+    }
+    if(["close","reopen","resolve","decline","accept"].includes(action))t.status=action==="reopen"?"open":action==="close"?"closed":action==="resolve"?"resolved":action==="decline"?"declined":"accepted";
     else if(action==="rename"){const n=String(req.body.name||"").trim().slice(0,80);if(!n)return res.status(400).json({error:"Name required"});t.subject=n;}
-    else return res.status(400).json({error:"Unknown action"});
+    else if(action==="blacklist"){
+      const existing=(await getRows("Blacklist")).find(x=>x.discord_user_id===t.discord_user_id);
+      if(!existing) await appendRow("Blacklist",{discord_user_id:t.discord_user_id,discord_username:t.discord_username,reason:String(req.body.reason||"Blacklisted by staff").slice(0,500),blacklisted_by:getAuthenticatedUser(req).username,created_at:new Date().toISOString()});
+      return res.json({ok:true});
+    } else return res.status(400).json({error:"Unknown action"});
     t.updated_at=new Date().toISOString(); await updateRow("Tickets",t.rowNumber,t); res.json({ok:true});
   }catch(e){res.status(503).json({error:e.message});}
 });
+
 
 // Discord AI: responds ONLY when this bot is tagged.
 // No conversation history is sent and store:false is used, so there is no bot memory.
