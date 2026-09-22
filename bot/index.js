@@ -28,6 +28,7 @@ const SHEET_TABS = {
 let sheets = null;
 const sheetCache = new Map();
 const SHEET_CACHE_TTL_MS = 5000;
+const SHEET_CACHE_TTLS = { Tickets: 3000, Messages: 1500, Blacklist: 10000, Users: 30000, Bans: 10000, StaffActions: 10000, Attachments: 30000 };
 
 function invalidateSheetCache(tab) {
   if (tab) sheetCache.delete(tab);
@@ -68,12 +69,15 @@ async function initSheets() {
     if (!currentHeaders.length || headers.some((h,i) => currentHeaders[i] !== h)) await sheets.spreadsheets.values.update({ spreadsheetId: SHEET_ID, range: tab + "!A1", valueInputOption: "RAW", requestBody: { values: [headers] } });
   }
   console.log("Google Sheets database ready.");
+  // Warm the frequently-read tabs once so the first page/chat request does not wait on Sheets.
+  await Promise.all(["Tickets","Messages","Blacklist","Users"].map(tab => getRows(tab).catch(e => console.error("Sheet warmup error (" + tab + "):", e.message))));
 }
 async function getRows(tab) {
   if (!sheets) throw Error("Google Sheets database is not connected");
   const now = Date.now();
   const cached = sheetCache.get(tab);
-  if (cached && now - cached.time < SHEET_CACHE_TTL_MS) return cached.rows;
+  const ttl = SHEET_CACHE_TTLS[tab] || SHEET_CACHE_TTL_MS;
+  if (cached && now - cached.time < ttl) return cached.rows;
   if (cached?.promise) return cached.promise;
   const promise = sheets.spreadsheets.values.get({spreadsheetId:SHEET_ID,range:tab+"!A:Z"}).then(r => {
     const rows=r.data.values||[]; const headers=rows[0]||SHEET_TABS[tab];
