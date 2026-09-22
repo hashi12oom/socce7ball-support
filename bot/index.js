@@ -479,16 +479,22 @@ client.on("messageCreate", async message => {
   if (!message.guildId || message.guildId !== process.env.DISCORD_GUILD_ID) return;
   if (!client.user || !message.mentions.has(client.user.id)) return;
 
-  let thinkingMessage = null;
+  let typingTimer = null;
   try {
-    thinkingMessage = await message.reply({ content: "<a:Loading:1551872225496277042> Thinking", allowedMentions: { repliedUser: false } });
+    await message.channel.sendTyping().catch(() => {});
+    typingTimer = setInterval(() => {
+      message.channel.sendTyping().catch(() => {});
+    }, 8000);
+
     const answer = await answerDiscordMessage(message);
-    if (answer && thinkingMessage) {
-      await thinkingMessage.edit({ content: answer, allowedMentions: { repliedUser: false } }).catch(() => {});
+    if (answer) {
+      await message.reply({ content: answer, allowedMentions: { repliedUser: false } });
     }
   } catch (e) {
     console.error("Discord AI reply error:", e.message);
-    if (thinkingMessage) await thinkingMessage.edit({ content: "I can't answer right now. Please create a ticket at " + SUPPORT_URL, allowedMentions: { repliedUser: false } }).catch(() => {});
+    await message.reply({ content: "I can't answer right now. Please create a ticket at " + SUPPORT_URL, allowedMentions: { repliedUser: false } }).catch(() => {});
+  } finally {
+    if (typingTimer) clearInterval(typingTimer);
   }
 });
 
