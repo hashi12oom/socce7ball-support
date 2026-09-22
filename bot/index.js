@@ -120,69 +120,43 @@ const SUPPORT_URL = process.env.SUPPORT_URL || "https://socce7ball-support.onren
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.AI_API_KEY;
 const gemini = GEMINI_API_KEY ? new GoogleGenAI({ apiKey: GEMINI_API_KEY }) : null;
 const botCooldowns = new Map();
+const authHandoffs = new Map();
+function createAuthHandoff(user) {
+  const token = crypto.randomBytes(32).toString("hex");
+  authHandoffs.set(token, { user, expires: Date.now() + 5 * 60 * 1000 });
+  return token;
+}
+function consumeAuthHandoff(token) {
+  const item = authHandoffs.get(token);
+  if (!item || item.expires < Date.now()) { authHandoffs.delete(token); return null; }
+  authHandoffs.delete(token);
+  return item.user;
+}
 const BOT_COOLDOWN_MS = 1500;
 
-async function initDatabase() {
-  if (!pool) {
-    console.log("DATABASE_URL is not set yet; website ticket storage is waiting for the database connection.");
-    return;
+function getAuthenticatedUser(req) {
+  if (req.session.user) return req.session.user;
+  const h = String(req.headers.authorization || "");
+  if (h.startsWith("Bearer ")) {
+    const token = h.slice(7);
+    const item = authHandoffs.get(token);
+    if (item && item.expires >= Date.now()) return item.user;
   }
-
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS users (
-      discord_id TEXT PRIMARY KEY,
-      username TEXT NOT NULL,
-      avatar TEXT,
-      is_staff BOOLEAN NOT NULL DEFAULT FALSE,
-      role_ids TEXT[] NOT NULL DEFAULT '{}',
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-
-    CREATE TABLE IF NOT EXISTS tickets (
-      id TEXT PRIMARY KEY,
-      discord_id TEXT NOT NULL REFERENCES users(discord_id) ON DELETE CASCADE,
-      name TEXT NOT NULL,
-      category TEXT NOT NULL DEFAULT 'Other',
-      topic TEXT NOT NULL DEFAULT '',
-      initial_message TEXT NOT NULL DEFAULT '',
-      roblox_username TEXT NOT NULL DEFAULT '',
-      status TEXT NOT NULL DEFAULT 'open',
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-
-    CREATE TABLE IF NOT EXISTS messages (
-      id BIGSERIAL PRIMARY KEY,
-      ticket_id TEXT NOT NULL REFERENCES tickets(id) ON DELETE CASCADE,
-      discord_id TEXT NOT NULL,
-      author_name TEXT NOT NULL,
-      avatar TEXT,
-      content TEXT NOT NULL,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    );
-
-    CREATE INDEX IF NOT EXISTS tickets_owner_idx ON tickets(discord_id);
-    CREATE INDEX IF NOT EXISTS tickets_updated_idx ON tickets(updated_at DESC);
-    CREATE INDEX IF NOT EXISTS messages_ticket_idx ON messages(ticket_id, created_at);
-  `);
-
-  console.log("Postgres database ready.");
+  return null;
 }
-
 function requireLogin(req, res, next) {
-  if (!req.session.user) return res.status(401).json({ error: "Login required" });
+  const user = getAuthenticatedUser(req);
+  if (!user) return res.status(401).json({ error: "Login required" });
+  if (!req.session.user) req.session.user = user;
   next();
 }
 
-function isStaff(req) {
-  return !!req.session.user?.isStaff;
-}
+function isStaff(req) { return !!getAuthenticatedUser(req)?.isStaff; }
 
 
 
 function ticketAccess(req, ticket) {
-  return isStaff(req) || ticket.discord_id === req.session.user.id;
+  return isStaff(req) || ticket.discord_id === getAuthenticatedUser(req).id;
 }
 
 app.get("/health", (req, res) =>
@@ -247,7 +221,8 @@ app.get("/auth/callback", async (req, res) => {
 
     req.session.user = user;
     await saveUser(user);
-    res.redirect(process.env.FRONTEND_URL || "/");
+    const handoff = createAuthHandoff(user);
+    res.redirect((process.env.FRONTEND_URL || "/") + "?auth=" + encodeURIComponent(handoff));
   } catch (e) {
     console.error("Discord OAuth callback error:", e);
     res.status(500).send("Discord login failed: " + e.message);
@@ -255,9 +230,19 @@ app.get("/auth/callback", async (req, res) => {
 });
 
 app.get("/auth/logout", (req, res) => req.session.destroy(() => res.redirect("/")));
-app.get("/api/me", (req, res) =>
-  req.session.user ? res.json(req.session.user) : res.status(401).json({ error: "Not logged in" })
-);
+app.get("/api/me", (req, res) => {
+  const user = getAuthenticatedUser(req);
+  user ? res.json(user) : res.status(401).json({ error: "Not logged in" });
+});
+app.post("/auth/exchange", (req, res) => {
+  const token = String(req.body?.token || "");
+  const user = consumeAuthHandoff(token);
+  if (!user) return res.status(401).json({ error: "Login link expired. Please log in again." });
+  const accessToken = crypto.randomBytes(32).toString("hex");
+  authHandoffs.set(accessToken, { user, expires: Date.now() + 30 * 24 * 60 * 60 * 1000 });
+  req.session.user = user;
+  res.json({ token: accessToken, user });
+});
 
 app.get("/api/tickets", requireLogin, async (req,res)=>{
   try{
@@ -273,7 +258,7 @@ app.post("/api/tickets", requireLogin, async (req,res)=>{
     const message=String(req.body.message||"").trim().slice(0,5000);
     if(!message)return res.status(400).json({error:"Message required"});
     const id=crypto.randomUUID(), now=new Date().toISOString();
-    await appendRow("Tickets",{ticket_id:id,discord_user_id:req.session.user.id,discord_username:req.session.user.username,discord_avatar:req.session.user.avatar||"",category,subject:topic,status:"open",created_at:now,updated_at:now});
+    await appendRow("Tickets",{ticket_id:id,discord_user_id:req.session.user.id,discord_username:getAuthenticatedUser(req).username,discord_avatar:req.session.user.avatar||"",category,subject:topic,status:"open",created_at:now,updated_at:now});
     await appendRow("Messages",{message_id:crypto.randomUUID(),ticket_id:id,discord_user_id:req.session.user.id,username:req.session.user.username,message,sender_type:"user",created_at:now});
     res.json({ticketId:id});
   }catch(e){res.status(503).json({error:e.message});}
