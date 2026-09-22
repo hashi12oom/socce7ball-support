@@ -349,7 +349,8 @@ async function registerSlashCommands() {
     new SlashCommandBuilder().setName("checkban").setDescription("Check whether a Discord user is banned").addUserOption(o => o.setName("user").setDescription("The user to check").setRequired(true)),
     new SlashCommandBuilder().setName("addstaff").setDescription("Add a role to the Socce7Ball staff roles").addRoleOption(o => o.setName("role").setDescription("The role to add").setRequired(true)),
     new SlashCommandBuilder().setName("removestaff").setDescription("Remove a role from the Socce7Ball staff roles").addRoleOption(o => o.setName("role").setDescription("The role to remove").setRequired(true)),
-    new SlashCommandBuilder().setName("stafflist").setDescription("Show staff members and their staff roles")
+    new SlashCommandBuilder().setName("stafflist").setDescription("Show staff members and their staff roles"),
+    new SlashCommandBuilder().setName("aimemory").setDescription("Manage trusted Gemini AI memory").addSubcommand(s => s.setName("add").setDescription("Save a trusted memory for Gemini").addStringOption(o => o.setName("memory").setDescription("Memory to save").setRequired(true))).addSubcommand(s => s.setName("list").setDescription("List saved Gemini memories")).addSubcommand(s => s.setName("clear").setDescription("Clear all Gemini memories"))
   ];
   const rest = new REST({ version: "10" }).setToken(process.env.DISCORD_BOT_TOKEN || process.env.DISCORD_TOKEN);
   await rest.put(Routes.applicationGuildCommands(process.env.DISCORD_CLIENT_ID, process.env.DISCORD_GUILD_ID), { body: commands.map(c => c.toJSON()) });
@@ -389,6 +390,27 @@ async function handleSlashCommand(interaction) {
     if (!STAFF_ROLE_IDS.includes(role.id)) return interaction.reply({ content: role.toString() + " is not currently a staff role.", ephemeral: true });
     STAFF_ROLE_IDS = STAFF_ROLE_IDS.filter(id => id !== role.id);
     return interaction.reply("Removed " + role.toString() + " from the Socce7Ball staff roles.");
+  }
+  if (command === "aimemory") {
+    if (!isFounderOrAdminMember(member)) return interaction.reply({ content: "Founder/Administrator only.", ephemeral: true });
+    const sub = interaction.options.getSubcommand();
+    if (sub === "add") {
+      const memory = interaction.options.getString("memory", true);
+      const ok = await addAIMemory(member, memory);
+      return interaction.reply({ content: ok ? "Saved to Gemini memory." : "Could not save the memory. Check Google Sheets.", ephemeral: true });
+    }
+    if (sub === "list") {
+      const rows = await getAIMemories();
+      const memories = rows.filter(r => r.guild_id === process.env.DISCORD_GUILD_ID && r.scope === "staff_founder").map((r,i) => (i + 1) + ". " + r.memory).slice(-50);
+      return interaction.reply({ content: memories.length ? "**Gemini Memory**\n" + memories.join("\n") : "No Gemini memories saved.", ephemeral: true });
+    }
+    if (sub === "clear") {
+      if (!sheets) return interaction.reply({ content: "Google Sheets is not connected.", ephemeral: true });
+      const rows = await getAIMemories();
+      await deleteSheetRows(AI_MEMORY_TAB, rows.map(r => r.rowNumber));
+      await sheets.spreadsheets.values.update({ spreadsheetId: SHEET_ID, range: AI_MEMORY_TAB + "!A1", valueInputOption: "RAW", requestBody: { values: [AI_MEMORY_HEADERS] } });
+      return interaction.reply({ content: "Cleared Gemini memory.", ephemeral: true });
+    }
   }
   if (command === "stafflist") {
     if (!isFounderOrAdminMember(member)) return interaction.reply({ content: "Founder/Administrator only.", ephemeral: true });
