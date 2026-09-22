@@ -26,7 +26,7 @@ $("openBtn").onclick=async()=>{try{showUser(await api("/api/me"));$("app").scrol
 $("logoutBtn").onclick=()=>location.href="/auth/logout";
 $("submitBtn").onclick=async()=>{
  const s=$("status");s.textContent="Creating ticket...";
- try{const r=await api("/api/tickets",{method:"POST",body:JSON.stringify({category:$("category").value,topic:$("topic").value,message:$("message").value,robloxUsername:$("roblox").value})});s.textContent="Ticket created: "+r.ticketId;$("message").value="";await loadTickets();await openTicket(r.channelId);}
+ try{const r=await api("/api/tickets",{method:"POST",body:JSON.stringify({category:$("category").value,topic:$("topic").value,message:$("message").value})});s.textContent="Ticket created: "+r.ticketId;$("message").value="";await loadTickets();await openTicket(r.ticketId);}
  catch(e){s.textContent="Error: "+e.message;}
 };
 $("sendBtn").onclick=async()=>{try{const id=$("chat").dataset.id;const v=$("chatInput").value.trim();if(!v)return;await api("/api/tickets/"+id+"/messages",{method:"POST",body:JSON.stringify({message:v})});$("chatInput").value="";await loadMessages(id);}catch(e){alert(e.message);}};
