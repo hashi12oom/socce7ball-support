@@ -214,7 +214,7 @@ app.get("/auth/callback", async (req, res) => {
       id: u.id,
       username: u.global_name || u.username,
       avatar: u.avatar ? `https://cdn.discordapp.com/avatars/${u.id}/${u.avatar}.png` : null,
-      isStaff: STAFF_ROLE_IDS.some(id => roleIds.includes(id)),
+      isStaff: STAFF_ROLE_IDS.some(id => roleIds.includes(id)) || (member?.permissions.has(PermissionFlagsBits.Administrator) ?? false) || (FOUNDER_ROLE_ID && roleIds.includes(FOUNDER_ROLE_ID)),
       roleIds,
       isGuildMember: !!member
     };
