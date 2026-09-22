@@ -2,9 +2,8 @@ require("dotenv").config();
 
 const express = require("express");
 const session = require("express-session");
-const pgSession = require("connect-pg-simple")(session);
-const { Pool } = require("pg");
 const { GoogleGenAI } = require("@google/genai");
+const { google } = require("googleapis");
 const path = require("path");
 const crypto = require("crypto");
 const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, PermissionFlagsBits, EmbedBuilder } = require("discord.js");
@@ -13,14 +12,64 @@ const app = express();
 app.set("trust proxy", 1);
 app.use(express.json({ limit: "20kb" }));
 
-const pool = process.env.DATABASE_URL
-  ? new Pool({
-      connectionString: process.env.DATABASE_URL,
-      ssl: process.env.DATABASE_URL.includes("localhost")
-        ? false
-        : { rejectUnauthorized: false }
-    })
-  : null;
+const SHEET_ID = process.env.GOOGLE_SHEET_ID;
+const SHEET_TABS = {
+  Tickets: ["ticket_id","discord_user_id","discord_username","discord_avatar","category","subject","status","created_at","updated_at"],
+  Messages: ["message_id","ticket_id","discord_user_id","username","message","sender_type","created_at"],
+  Users: ["discord_user_id","discord_username","avatar","roles","first_seen","last_seen"],
+  Bans: ["discord_user_id","discord_username","ban_status","reason","banned_by","banned_at","expires_at"],
+  StaffActions: ["action_id","staff_discord_id","staff_username","action","ticket_id","details","created_at"]
+};
+let sheets = null;
+
+async function initSheets() {
+  if (!SHEET_ID || !process.env.GOOGLE_CLIENT_EMAIL || !process.env.GOOGLE_PRIVATE_KEY) {
+    console.log("Google Sheets is not configured. Set GOOGLE_SHEET_ID, GOOGLE_CLIENT_EMAIL, and GOOGLE_PRIVATE_KEY.");
+    return;
+  }
+  const auth = new google.auth.GoogleAuth({
+    credentials: {
+      client_email: process.env.GOOGLE_CLIENT_EMAIL,
+      private_key: process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, "\\n")
+    },
+    scopes: ["https://www.googleapis.com/auth/spreadsheets"]
+  });
+  sheets = google.sheets({ version: "v4", auth });
+  const meta = await sheets.spreadsheets.get({ spreadsheetId: SHEET_ID });
+  const existing = new Set((meta.data.sheets || []).map(s => s.properties.title));
+  const requests = Object.keys(SHEET_TABS).filter(t => !existing.has(t)).map(title => ({ addSheet: { properties: { title } } }));
+  if (requests.length) await sheets.spreadsheets.batchUpdate({ spreadsheetId: SHEET_ID, requestBody: { requests } });
+  for (const [tab, headers] of Object.entries(SHEET_TABS)) {
+    const r = await sheets.spreadsheets.values.get({ spreadsheetId: SHEET_ID, range: tab + "!1:1" }).catch(() => ({ data: {} }));
+    if (!r.data.values?.[0]?.length) await sheets.spreadsheets.values.update({ spreadsheetId: SHEET_ID, range: tab + "!A1", valueInputOption: "RAW", requestBody: { values: [headers] } });
+  }
+  console.log("Google Sheets database ready.");
+}
+async function sheetRows(tab) {
+  if (!sheets) throw Error("Google Sheets database is not connected");
+  const r=await sheets.spreadsheets.values.get({spreadsheetId:SHEET_ID,range:tab+"!A:Z"});
+  const rows=r.data.values||[]; const headers=rows[0]||SHEET_TABS[tab];
+  return rows.slice(1).map((row,i)=>Object.fromEntries(headers.map((h,j)=>[h,row[j]??""])).concat ? [] : []);
+}
+async function getRows(tab) {
+  if (!sheets) throw Error("Google Sheets database is not connected");
+  const r=await sheets.spreadsheets.values.get({spreadsheetId:SHEET_ID,range:tab+"!A:Z"});
+  const rows=r.data.values||[]; const headers=rows[0]||SHEET_TABS[tab];
+  return rows.slice(1).map((row,i)=>({rowNumber:i+2,...Object.fromEntries(headers.map((h,j)=>[h,row[j]??""]))}));
+}
+async function appendRow(tab,obj){
+  if(!sheets) throw Error("Google Sheets database is not connected");
+  await sheets.spreadsheets.values.append({spreadsheetId:SHEET_ID,range:tab+"!A:Z",valueInputOption:"RAW",requestBody:{values:[SHEET_TABS[tab].map(h=>obj[h]??"")]}});
+}
+async function updateRow(tab,rowNumber,obj){
+  await sheets.spreadsheets.values.update({spreadsheetId:SHEET_ID,range:tab+"!A"+rowNumber,valueInputOption:"RAW",requestBody:{values:[SHEET_TABS[tab].map(h=>obj[h]??"")]}});
+}
+async function saveUser(user) {
+  if (!sheets) return;
+  const rows=await getRows("Users"); const old=rows.find(r=>r.discord_user_id===user.id);
+  const now=new Date().toISOString(); const obj={discord_user_id:user.id,discord_username:user.username,avatar:user.avatar||"",roles:(user.roleIds||[]).join(","),first_seen:old?.first_seen||now,last_seen:now};
+  if(old) await updateRow("Users",old.rowNumber,obj); else await appendRow("Users",obj);
+}
 
 const sessionConfig = {
   secret: process.env.SESSION_SECRET || "change-this",
@@ -208,121 +257,52 @@ app.get("/api/me", (req, res) =>
   req.session.user ? res.json(req.session.user) : res.status(401).json({ error: "Not logged in" })
 );
 
-app.get("/api/tickets", requireLogin, async (req, res) => {
-  try {
-    if (!pool) return res.status(503).json({ error: "Database is not connected yet" });
-
-    const result = isStaff(req)
-      ? await pool.query(`SELECT id, discord_id AS "ownerId", name, category, topic, status, roblox_username AS "robloxUsername", created_at AS "createdAt", updated_at AS "updatedAt" FROM tickets ORDER BY updated_at DESC`)
-      : await pool.query(`SELECT id, discord_id AS "ownerId", name, category, topic, status, roblox_username AS "robloxUsername", created_at AS "createdAt", updated_at AS "updatedAt" FROM tickets WHERE discord_id=$1 ORDER BY updated_at DESC`, [req.session.user.id]);
-
-    res.json(result.rows);
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+app.get("/api/tickets", requireLogin, async (req,res)=>{
+  try{
+    const rows=await getRows("Tickets");
+    const mine=rows.filter(t=>isStaff(req)||t.discord_user_id===req.session.user.id);
+    res.json(mine.sort((a,b)=>String(b.updated_at).localeCompare(String(a.updated_at))).map(t=>({id:t.ticket_id,ownerId:t.discord_user_id,name:t.subject||("ticket-"+t.ticket_id.slice(0,8)),category:t.category,topic:t.subject,status:t.status,createdAt:t.created_at,updatedAt:t.updated_at})));
+  }catch(e){res.status(503).json({error:e.message});}
 });
-
-app.post("/api/tickets", requireLogin, async (req, res) => {
-  try {
-    if (!pool) return res.status(503).json({ error: "Database is not connected yet" });
-
-    const category = String(req.body.category || "Other").trim().slice(0, 80);
-    const topic = String(req.body.topic || "").trim().slice(0, 200);
-    const message = String(req.body.message || "").trim().slice(0, 5000);
-    const robloxUsername = String(req.body.robloxUsername || "").trim().slice(0, 100);
-    if (!message) return res.status(400).json({ error: "Message required" });
-
-    const id = crypto.randomUUID();
-    const name = `ticket-${id.slice(0, 8)}`;
-
-    await pool.query(
-      `INSERT INTO tickets (id, discord_id, name, category, topic, initial_message, roblox_username) VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-      [id, req.session.user.id, name, category, topic, message, robloxUsername]
-    );
-
-    await pool.query(
-      `INSERT INTO messages (ticket_id, discord_id, author_name, avatar, content) VALUES ($1,$2,$3,$4,$5)`,
-      [id, req.session.user.id, req.session.user.username, req.session.user.avatar, message]
-    );
-
-    res.json({ ticketId: id });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+app.post("/api/tickets", requireLogin, async (req,res)=>{
+  try{
+    const category=String(req.body.category||"Other").trim().slice(0,80);
+    const topic=String(req.body.topic||"").trim().slice(0,200);
+    const message=String(req.body.message||"").trim().slice(0,5000);
+    if(!message)return res.status(400).json({error:"Message required"});
+    const id=crypto.randomUUID(), now=new Date().toISOString();
+    await appendRow("Tickets",{ticket_id:id,discord_user_id:req.session.user.id,discord_username:req.session.user.username,discord_avatar:req.session.user.avatar||"",category,subject:topic,status:"open",created_at:now,updated_at:now});
+    await appendRow("Messages",{message_id:crypto.randomUUID(),ticket_id:id,discord_user_id:req.session.user.id,username:req.session.user.username,message,sender_type:"user",created_at:now});
+    res.json({ticketId:id});
+  }catch(e){res.status(503).json({error:e.message});}
 });
-
-app.get("/api/tickets/:id/messages", requireLogin, async (req, res) => {
-  try {
-    if (!pool) return res.status(503).json({ error: "Database is not connected yet" });
-
-    const ticket = await pool.query("SELECT * FROM tickets WHERE id=$1", [req.params.id]);
-    if (!ticket.rows[0]) return res.status(404).json({ error: "Ticket not found" });
-    if (!ticketAccess(req, ticket.rows[0])) return res.status(403).json({ error: "No access" });
-
-    const msgs = await pool.query(
-      `SELECT id, discord_id AS "discordId", author_name AS author, avatar, content, created_at AS "createdAt"
-       FROM messages WHERE ticket_id=$1 ORDER BY created_at ASC`,
-      [req.params.id]
-    );
-    res.json(msgs.rows);
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+app.get("/api/tickets/:id/messages",requireLogin,async(req,res)=>{
+  try{
+    const t=(await getRows("Tickets")).find(x=>x.ticket_id===req.params.id); if(!t)return res.status(404).json({error:"Ticket not found"});
+    if(!isStaff(req)&&t.discord_user_id!==req.session.user.id)return res.status(403).json({error:"No access"});
+    const ms=(await getRows("Messages")).filter(x=>x.ticket_id===req.params.id);
+    res.json(ms.map(m=>({id:m.message_id,discordId:m.discord_user_id,author:m.username,avatar:"",content:m.message,createdAt:m.created_at})));
+  }catch(e){res.status(503).json({error:e.message});}
 });
-
-app.post("/api/tickets/:id/messages", requireLogin, async (req, res) => {
-  try {
-    if (!pool) return res.status(503).json({ error: "Database is not connected yet" });
-
-    const content = String(req.body.message || "").trim().slice(0, 5000);
-    if (!content) return res.status(400).json({ error: "Message required" });
-
-    const ticket = await pool.query("SELECT * FROM tickets WHERE id=$1", [req.params.id]);
-    if (!ticket.rows[0]) return res.status(404).json({ error: "Ticket not found" });
-    if (!ticketAccess(req, ticket.rows[0])) return res.status(403).json({ error: "No access" });
-    if (ticket.rows[0].status === "closed") return res.status(400).json({ error: "Ticket is closed" });
-
-    const m = await pool.query(
-      `INSERT INTO messages (ticket_id, discord_id, author_name, avatar, content) VALUES ($1,$2,$3,$4,$5) RETURNING id`,
-      [req.params.id, req.session.user.id, req.session.user.username, req.session.user.avatar, content]
-    );
-    await pool.query("UPDATE tickets SET updated_at=NOW() WHERE id=$1", [req.params.id]);
-    res.json({ id: m.rows[0].id });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+app.post("/api/tickets/:id/messages",requireLogin,async(req,res)=>{
+  try{
+    const content=String(req.body.message||"").trim().slice(0,5000); if(!content)return res.status(400).json({error:"Message required"});
+    const rows=await getRows("Tickets"),t=rows.find(x=>x.ticket_id===req.params.id); if(!t)return res.status(404).json({error:"Ticket not found"});
+    if(!isStaff(req)&&t.discord_user_id!==req.session.user.id)return res.status(403).json({error:"No access"});
+    if(t.status==="closed")return res.status(400).json({error:"Ticket is closed"});
+    const now=new Date().toISOString(); await appendRow("Messages",{message_id:crypto.randomUUID(),ticket_id:req.params.id,discord_user_id:req.session.user.id,username:req.session.user.username,message:content,sender_type:isStaff(req)?"staff":"user",created_at:now});
+    t.updated_at=now; await updateRow("Tickets",t.rowNumber,t); res.json({ok:true});
+  }catch(e){res.status(503).json({error:e.message});}
 });
-
-app.post("/api/tickets/:id/:action", requireLogin, async (req, res) => {
-  try {
-    if (!pool) return res.status(503).json({ error: "Database is not connected yet" });
-    if (!isStaff(req)) return res.status(403).json({ error: "Staff only" });
-
-    const id = req.params.id;
-    const action = req.params.action;
-    const ticket = await pool.query("SELECT * FROM tickets WHERE id=$1", [id]);
-    if (!ticket.rows[0]) return res.status(404).json({ error: "Ticket not found" });
-
-    if (action === "close") {
-      await pool.query("UPDATE tickets SET status='closed', updated_at=NOW() WHERE id=$1", [id]);
-    } else if (action === "reopen") {
-      await pool.query("UPDATE tickets SET status='open', updated_at=NOW() WHERE id=$1", [id]);
-    } else if (action === "resolve") {
-      await pool.query("UPDATE tickets SET status='resolved', updated_at=NOW() WHERE id=$1", [id]);
-    } else if (action === "decline") {
-      await pool.query("UPDATE tickets SET status='declined', updated_at=NOW() WHERE id=$1", [id]);
-    } else if (action === "rename") {
-      const n = String(req.body.name || "").trim().slice(0, 80);
-      if (!n) return res.status(400).json({ error: "Name required" });
-      await pool.query("UPDATE tickets SET name=$1, updated_at=NOW() WHERE id=$2", [n, id]);
-    } else {
-      return res.status(400).json({ error: "Unknown action" });
-    }
-
-    res.json({ ok: true });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+app.post("/api/tickets/:id/:action",requireLogin,async(req,res)=>{
+  try{
+    if(!isStaff(req))return res.status(403).json({error:"Staff only"});
+    const rows=await getRows("Tickets"),t=rows.find(x=>x.ticket_id===req.params.id); if(!t)return res.status(404).json({error:"Ticket not found"});
+    const action=req.params.action; if(["close","reopen","resolve","decline"].includes(action))t.status=action==="reopen"?"open":action==="close"?"closed":action==="resolve"?"resolved":"declined";
+    else if(action==="rename"){const n=String(req.body.name||"").trim().slice(0,80);if(!n)return res.status(400).json({error:"Name required"});t.subject=n;}
+    else return res.status(400).json({error:"Unknown action"});
+    t.updated_at=new Date().toISOString(); await updateRow("Tickets",t.rowNumber,t); res.json({ok:true});
+  }catch(e){res.status(503).json({error:e.message});}
 });
 
 // Discord AI: responds ONLY when this bot is tagged.
@@ -511,7 +491,7 @@ app.get(/.*/, (req, res) => res.sendFile(path.join(__dirname, "..", "index.html"
 
 (async () => {
   try {
-    await initDatabase();
+    await initSheets();
     const discordToken = process.env.DISCORD_BOT_TOKEN || process.env.DISCORD_TOKEN;
     if (!discordToken) throw Error("Missing DISCORD_BOT_TOKEN (or legacy DISCORD_TOKEN)");
     await client.login(discordToken);
