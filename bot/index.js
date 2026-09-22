@@ -117,7 +117,7 @@ function hasStaffRole(member) { return !!member && STAFF_ROLE_IDS.some(id => mem
 function isFounderOrAdminMember(member) { return !!member && ((FOUNDER_ROLE_ID && member.roles.cache.has(FOUNDER_ROLE_ID)) || member.permissions.has(PermissionFlagsBits.Administrator)); }
 
 const SUPPORT_URL = process.env.SUPPORT_URL || "https://socce7ball-support.onrender.com";
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.AI_API_KEY;
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const gemini = GEMINI_API_KEY ? new GoogleGenAI({ apiKey: GEMINI_API_KEY }) : null;
 const botCooldowns = new Map();
 const authHandoffs = new Map();
