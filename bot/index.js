@@ -1,6 +1,7 @@
 require("dotenv").config();
 
 const express = require("express");
+const cors = require("cors");
 const session = require("express-session");
 const { GoogleGenAI } = require("@google/genai");
 const { google } = require("googleapis");
@@ -11,6 +12,8 @@ const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, Permission
 const app = express();
 app.set("trust proxy", 1);
 app.use(express.json({ limit: "20kb" }));
+const allowedOrigin = process.env.FRONTEND_ORIGIN || "https://hashi12oom.github.io";
+app.use(cors({ origin: allowedOrigin, credentials: true }));
 
 const SHEET_ID = process.env.GOOGLE_SHEET_ID;
 const SHEET_TABS = {
@@ -75,7 +78,7 @@ const sessionConfig = {
   secret: process.env.SESSION_SECRET || "change-this",
   resave: false,
   saveUninitialized: false,
-  cookie: { secure: true, sameSite: "lax", httpOnly: true }
+  cookie: { secure: true, sameSite: "none", httpOnly: true }
 };
 
 app.use(session(sessionConfig));
@@ -233,7 +236,7 @@ app.get("/auth/callback", async (req, res) => {
 
     req.session.user = user;
     await saveUser(user);
-    res.redirect("/");
+    res.redirect(process.env.FRONTEND_URL || "/");
   } catch (e) {
     console.error("Discord OAuth callback error:", e);
     res.status(500).send("Discord login failed: " + e.message);
