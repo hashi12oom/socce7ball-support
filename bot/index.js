@@ -59,12 +59,6 @@ async function initSheets() {
   }
   console.log("Google Sheets database ready.");
 }
-async function sheetRows(tab) {
-  if (!sheets) throw Error("Google Sheets database is not connected");
-  const r=await sheets.spreadsheets.values.get({spreadsheetId:SHEET_ID,range:tab+"!A:Z"});
-  const rows=r.data.values||[]; const headers=rows[0]||SHEET_TABS[tab];
-  return rows.slice(1).map((row,i)=>Object.fromEntries(headers.map((h,j)=>[h,row[j]??""])).concat ? [] : []);
-}
 async function getRows(tab) {
   if (!sheets) throw Error("Google Sheets database is not connected");
   const r=await sheets.spreadsheets.values.get({spreadsheetId:SHEET_ID,range:tab+"!A:Z"});
@@ -76,6 +70,7 @@ async function appendRow(tab,obj){
   await sheets.spreadsheets.values.append({spreadsheetId:SHEET_ID,range:tab+"!A:Z",valueInputOption:"RAW",requestBody:{values:[SHEET_TABS[tab].map(h=>obj[h]??"")]}});
 }
 async function updateRow(tab,rowNumber,obj){
+  if(!sheets) throw Error("Google Sheets database is not connected");
   await sheets.spreadsheets.values.update({spreadsheetId:SHEET_ID,range:tab+"!A"+rowNumber,valueInputOption:"RAW",requestBody:{values:[SHEET_TABS[tab].map(h=>obj[h]??"")]}});
 }
 async function saveUser(user) {
@@ -478,8 +473,15 @@ app.get(/.*/, (req, res) => res.sendFile(path.join(__dirname, "..", "index.html"
 
 (async () => {
   try {
-    await initSheets();
-    const discordToken = process.env.DISCORD_BOT_TOKEN || process.env.DISCORD_TOKEN;
+    try {
+      await initSheets();
+    } catch (e) {
+      sheets = null;
+      console.error("Google Sheets startup error:", e.message);
+      console.error("The API and Discord bot will continue, but ticket/database endpoints will remain unavailable until Google Sheets credentials are fixed.");
+    }
+    const rawDiscordToken = process.env.DISCORD_BOT_TOKEN || process.env.DISCORD_TOKEN;
+    const discordToken = String(rawDiscordToken || "").trim().replace(/^["']|["']$/g, "");
     if (!discordToken) throw Error("Missing DISCORD_BOT_TOKEN (or legacy DISCORD_TOKEN)");
     await client.login(discordToken);
     app.listen(process.env.PORT || 3000, "0.0.0.0", () => console.log("Support server running"));
