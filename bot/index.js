@@ -10,6 +10,7 @@ const crypto = require("crypto");
 const { Client, GatewayIntentBits } = require("discord.js");
 
 const app = express();
+app.set("trust proxy", 1);
 app.use(express.json({ limit: "20kb" }));
 
 const pool = process.env.DATABASE_URL
@@ -137,28 +138,37 @@ app.get("/auth/discord", (req, res) => {
     client_id: process.env.DISCORD_CLIENT_ID,
     response_type: "code",
     redirect_uri: process.env.DISCORD_REDIRECT_URI,
-    scope: "identify"
+    scope: "identify guilds"
   });
   res.redirect("https://discord.com/oauth2/authorize?" + p.toString());
 });
 
 app.get("/auth/callback", async (req, res) => {
   try {
+    if (!req.query.code) throw Error("Discord did not return an authorization code.");
+
     const p = new URLSearchParams({
-      client_id: process.env.DISCORD_CLIENT_ID,
-      client_secret: process.env.DISCORD_CLIENT_SECRET,
       grant_type: "authorization_code",
-      code: req.query.code,
+      code: String(req.query.code),
       redirect_uri: process.env.DISCORD_REDIRECT_URI
     });
 
-    const tr = await fetch("https://discord.com/api/oauth2/token", {
+    const credentials = Buffer.from(
+      process.env.DISCORD_CLIENT_ID + ":" + process.env.DISCORD_CLIENT_SECRET
+    ).toString("base64");
+
+    const tr = await fetch("https://discord.com/api/v10/oauth2/token", {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Authorization": "Basic " + credentials
+      },
       body: p
     });
     const token = await tr.json();
-    if (!token.access_token) throw Error("OAuth failed");
+    if (!tr.ok || !token.access_token) {
+      throw Error(token.error_description || token.error || "Discord OAuth token exchange failed.");
+    }
 
     const ur = await fetch("https://discord.com/api/users/@me", {
       headers: { Authorization: "Bearer " + token.access_token }
@@ -183,6 +193,7 @@ app.get("/auth/callback", async (req, res) => {
     await saveUser(user);
     res.redirect("/");
   } catch (e) {
+    console.error("Discord OAuth callback error:", e);
     res.status(500).send("Discord login failed: " + e.message);
   }
 });
