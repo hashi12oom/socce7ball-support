@@ -26,6 +26,13 @@ const SHEET_TABS = {
   StaffActions: ["action_id","staff_discord_id","staff_username","action","ticket_id","details","created_at"]
 };
 let sheets = null;
+const sheetCache = new Map();
+const SHEET_CACHE_TTL_MS = 5000;
+
+function invalidateSheetCache(tab) {
+  if (tab) sheetCache.delete(tab);
+  else sheetCache.clear();
+}
 
 function getGooglePrivateKey() {
   let value = String(process.env.GOOGLE_PRIVATE_KEY || "").trim();
@@ -64,13 +71,23 @@ async function initSheets() {
 }
 async function getRows(tab) {
   if (!sheets) throw Error("Google Sheets database is not connected");
-  const r=await sheets.spreadsheets.values.get({spreadsheetId:SHEET_ID,range:tab+"!A:Z"});
-  const rows=r.data.values||[]; const headers=rows[0]||SHEET_TABS[tab];
-  return rows.slice(1).map((row,i)=>({rowNumber:i+2,...Object.fromEntries(headers.map((h,j)=>[h,row[j]??""]))}));
+  const now = Date.now();
+  const cached = sheetCache.get(tab);
+  if (cached && now - cached.time < SHEET_CACHE_TTL_MS) return cached.rows;
+  if (cached?.promise) return cached.promise;
+  const promise = sheets.spreadsheets.values.get({spreadsheetId:SHEET_ID,range:tab+"!A:Z"}).then(r => {
+    const rows=r.data.values||[]; const headers=rows[0]||SHEET_TABS[tab];
+    const result=rows.slice(1).map((row,i)=>({rowNumber:i+2,...Object.fromEntries(headers.map((h,j)=>[h,row[j]??""]))}));
+    sheetCache.set(tab,{time:Date.now(),rows:result});
+    return result;
+  }).catch(err => { sheetCache.delete(tab); throw err; });
+  sheetCache.set(tab,{time:now,rows:[],promise});
+  return promise;
 }
 async function appendRow(tab,obj){
   if(!sheets) throw Error("Google Sheets database is not connected");
   await sheets.spreadsheets.values.append({spreadsheetId:SHEET_ID,range:tab+"!A:Z",valueInputOption:"RAW",requestBody:{values:[SHEET_TABS[tab].map(h=>obj[h]??"")]}});
+  invalidateSheetCache(tab);
 }
 async function deleteSheetRows(tab,rowNumbers){
   if(!sheets) throw Error("Google Sheets database is not connected");
@@ -80,10 +97,12 @@ async function deleteSheetRows(tab,rowNumbers){
   const sheetId=sh.properties.sheetId;
   const requests=[...new Set(rowNumbers)].sort((a,b)=>b-a).map(row=>({deleteDimension:{range:{sheetId,dimension:"ROWS",startIndex:row-1,endIndex:row}}}));
   await sheets.spreadsheets.batchUpdate({spreadsheetId:SHEET_ID,requestBody:{requests}});
+  invalidateSheetCache(tab);
 }
 async function updateRow(tab,rowNumber,obj){
   if(!sheets) throw Error("Google Sheets database is not connected");
   await sheets.spreadsheets.values.update({spreadsheetId:SHEET_ID,range:tab+"!A"+rowNumber,valueInputOption:"RAW",requestBody:{values:[SHEET_TABS[tab].map(h=>obj[h]??"")]}});
+  invalidateSheetCache(tab);
 }
 async function saveUser(user) {
   if (!sheets) return;
