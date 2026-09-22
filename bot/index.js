@@ -264,6 +264,8 @@ app.post("/api/tickets", requireLogin, async (req,res)=>{
     const topic=String(req.body.topic||"").trim().slice(0,200);
     const message=String(req.body.message||"").trim().slice(0,5000);
     if(!message)return res.status(400).json({error:"Message required"});
+    const blacklisted = (await getRows("Blacklist")).some(x => x.discord_user_id === req.session.user.id);
+    if (blacklisted) return res.status(403).json({error:"You are blacklisted from opening tickets."});
     const id=crypto.randomUUID(), now=new Date().toISOString();
     await appendRow("Tickets",{ticket_id:id,discord_user_id:req.session.user.id,discord_username:getAuthenticatedUser(req).username,discord_avatar:req.session.user.avatar||"",category,subject:topic,status:"open",created_at:now,updated_at:now});
     await appendRow("Messages",{message_id:crypto.randomUUID(),ticket_id:id,discord_user_id:req.session.user.id,username:req.session.user.username,message,sender_type:"user",created_at:now,attachment_id:"",attachment_name:"",attachment_type:""});
@@ -299,7 +301,6 @@ app.post("/api/tickets/:id/:action",requireLogin,async(req,res)=>{
     const rows=await getRows("Tickets"),t=rows.find(x=>x.ticket_id===req.params.id); if(!t)return res.status(404).json({error:"Ticket not found"});
     const action=req.params.action;
     if(action==="delete"){
-      await deleteSheetRows("Messages",(await getRows("Messages")).filter(x=>x.ticket_id===t.ticket_id).map(x=>x.rowNumber));
       const ticketMessages=await getRows("Messages"); const attachmentIds=new Set(ticketMessages.filter(x=>x.ticket_id===t.ticket_id&&x.attachment_id).map(x=>x.attachment_id)); await deleteSheetRows("Messages",ticketMessages.filter(x=>x.ticket_id===t.ticket_id).map(x=>x.rowNumber)); const attachmentRows=await getRows("Attachments"); await deleteSheetRows("Attachments",attachmentRows.filter(x=>attachmentIds.has(x.attachment_id)).map(x=>x.rowNumber));
       await deleteSheetRows("Tickets",[t.rowNumber]);
       return res.json({ok:true});
