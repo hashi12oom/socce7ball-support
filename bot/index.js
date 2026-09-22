@@ -300,7 +300,7 @@ app.post("/api/tickets/:id/:action",requireLogin,async(req,res)=>{
     const action=req.params.action;
     if(action==="delete"){
       await deleteSheetRows("Messages",(await getRows("Messages")).filter(x=>x.ticket_id===t.ticket_id).map(x=>x.rowNumber));
-      await deleteSheetRows("Attachments",(await getRows("Attachments")).filter(x=>{const ms=[]; return false;}).map(x=>x.rowNumber));
+      const ticketMessages=await getRows("Messages"); const attachmentIds=new Set(ticketMessages.filter(x=>x.ticket_id===t.ticket_id&&x.attachment_id).map(x=>x.attachment_id)); await deleteSheetRows("Messages",ticketMessages.filter(x=>x.ticket_id===t.ticket_id).map(x=>x.rowNumber)); const attachmentRows=await getRows("Attachments"); await deleteSheetRows("Attachments",attachmentRows.filter(x=>attachmentIds.has(x.attachment_id)).map(x=>x.rowNumber));
       await deleteSheetRows("Tickets",[t.rowNumber]);
       return res.json({ok:true});
     }
