@@ -58,7 +58,7 @@ async function loadMessages(id){
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));}
 
 $("loginBtn").onclick=()=>{ if(currentUser) return; location.href=API_BASE+"/auth/discord"; };
-$("openBtn").onclick=async()=>{try{showUser(currentUser||await api("/api/me"));setView("new");$("app").scrollIntoView({behavior:"smooth"});await loadTickets();}catch{location.href="/auth/discord";}};
+$("openBtn").onclick=async()=>{try{showUser(currentUser||await api("/api/me"));$("home").classList.add("hidden");setView("new");$("app").scrollIntoView({behavior:"smooth"});await loadTickets();}catch{location.href="/auth/discord";}};
 $("ticketsTab").onclick=()=>setView("tickets");
 $("newTicketTab").onclick=()=>setView("new");
 $("staffTab").onclick=()=>{if(currentUser?.isStaff)setView("staff");};
