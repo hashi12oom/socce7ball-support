@@ -1,4 +1,4 @@
-const API_BASE="https://socce7ball-support-node.onrender.com";
+const API_BASE="https://socce7ball-support.onrender.com";
 const $=id=>document.getElementById(id);
 async function api(path,options={}){
   const r=await fetch(API_BASE+path,{credentials:"include",...options,headers:{"Content-Type":"application/json",...(options.headers||{})}});
