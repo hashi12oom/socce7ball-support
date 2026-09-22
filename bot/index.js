@@ -393,7 +393,7 @@ async function answerDiscordMessage(message) {
       model: process.env.GEMINI_MODEL || "gemini-3.8-flash",
       contents: text,
       config: {
-        systemInstruction: ``You are the Socce7Ball Discord bot.
+        systemInstruction: `You are the Socce7Ball Discord bot.
 Keep replies short, casual, friendly, and human-like. Usually 1-3 short sentences.
 You may chat, joke, play simple games, do trivia, and answer simple questions.
 Only answer about Socce7Ball, its Discord community, its website/support system, Roblox/Socce7Ball topics, or harmless casual games.
