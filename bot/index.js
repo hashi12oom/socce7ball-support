@@ -307,20 +307,71 @@ app.post("/api/tickets/:id/:action", requireLogin, async (req, res) => {
 
 // Discord AI: responds ONLY when this bot is tagged.
 // No conversation history is sent and store:false is used, so there is no bot memory.
-async function answerDiscordMessage(message) {
-  if (!openai) return "I can't answer right now. Please create a ticket at " + SUPPORT_URL;
 
+async function checkBan(message, text) {
+  const g = guild();
+  if (!g) return "I can't check the server right now.";
+
+  const mention = message.mentions.users.first();
+  const idMatch = text.match(/\b\d{17,20}\b/);
+  let userId = mention?.id || idMatch?.[0];
+
+  // If they gave a normal username, try the guild member search.
+  if (!userId) {
+    const name = text
+      .replace(/\b(check|is|the|ban|banned|discord|user|id|status|for|please)\b/gi, " ")
+      .trim()
+      .replace(/[^a-zA-Z0-9_.-]/g, "")
+      .slice(0, 100);
+
+    if (name) {
+      const members = await g.members.search({ query: name, limit: 10 }).catch(() => null);
+      const found = members?.find(m =>
+        m.user.username.toLowerCase() === name.toLowerCase() ||
+        (m.user.globalName || "").toLowerCase() === name.toLowerCase()
+      );
+      if (found) userId = found.id;
+    }
+  }
+
+  if (!userId) {
+    return "Send me the Discord ID or @mention of the user you want me to check.";
+  }
+
+  const user = await client.users.fetch(userId).catch(() => null);
+  const ban = await g.bans.fetch(userId).catch(() => null);
+
+  if (ban) {
+    const name = user ? (user.globalName || user.username) : userId;
+    const reason = ban.reason ? ` Reason: ${ban.reason.slice(0, 250)}` : "";
+    return `Yes — ${name} is banned from Socce7Ball.${reason}`;
+  }
+
+  const member = await g.members.fetch(userId).catch(() => null);
+  const name = user ? (user.globalName || user.username) : (member?.user.username || userId);
+
+  if (member) return `No — ${name} is not banned from Socce7Ball. They are currently in the server.`;
+  return `No — ${name} is not on the current ban list.`;
+}
+
+async function answerDiscordMessage(message) {
   const now = Date.now();
   const last = botCooldowns.get(message.author.id) || 0;
   if (now - last < BOT_COOLDOWN_MS) return null;
   botCooldowns.set(message.author.id, now);
 
   const text = message.content
-    .replace(new RegExp(`<@!?${client.user.id}>`, "g"), "")
+    .replace(new RegExp(`<@!?\\${client.user.id}>`, "g"), "")
     .trim()
     .slice(0, 500);
 
   if (!text) return "Hey! Ask me a short Socce7Ball question or tag me with a simple game.";
+
+  if (/\\b(check|is|am|was|has)\\b.*\\b(ban|banned|banlist)\\b|\\b(ban|banned|banlist)\\b.*\\b(check|status|user|id)\\b/i.test(text)) {
+    return checkBan(message, text);
+  }
+
+  if (!openai) return "I can't answer right now. Please create a ticket at " + SUPPORT_URL;
 
   try {
     const response = await openai.responses.create({
@@ -329,6 +380,7 @@ async function answerDiscordMessage(message) {
 Keep replies short, casual, friendly, and human-like. Usually 1-3 short sentences.
 You may chat, joke, play simple games, do trivia, and answer simple questions.
 Only answer about Socce7Ball, its Discord community, its website/support system, Roblox/Socce7Ball topics, or harmless casual games.
+Ban checking is handled separately by the bot; never guess a ban status.
 Do not invent server rules, staff decisions, punishments, links, schedules, or facts.
 If you do not know, say: "I don't know that one — create a ticket at ${SUPPORT_URL}"
 For account issues, bans, appeals, reports, or staff decisions, direct them to ${SUPPORT_URL}
