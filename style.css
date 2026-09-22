@@ -18,3 +18,21 @@ footer{display:flex;justify-content:center;align-items:center;gap:8px;color:#505
 .blacklist-add{display:grid;grid-template-columns:1.2fr .7fr 1.5fr auto;gap:8px;margin-bottom:12px}.blacklist-add input,.blacklist-add select{margin:0}.blacklist-add .primary{white-space:nowrap}.blackRow small{max-width:900px}
 @media(max-width:850px){.blacklist-add{grid-template-columns:1fr 1fr}.blacklist-add input:nth-child(3){grid-column:1/-1}.blacklist-add button{grid-column:1/-1}.switch-wrap>span{display:none}}
 @media(max-width:620px){.switch-wrap{gap:4px}.switch{width:34px}.switch-wrap input:checked+.switch:after{left:17px}.blacklist-add{grid-template-columns:1fr}.blacklist-add input,.blacklist-add select,.blacklist-add button{grid-column:auto}}
+
+/* Mobile workspace navigation: keep action tabs at the top. */
+@media(max-width:850px){
+  .workspace{display:flex;flex-direction:column;min-height:0}
+  .sidebar{position:sticky;top:64px;z-index:15;width:100%;order:0;background:rgba(13,13,17,.96);backdrop-filter:blur(18px);padding:8px 10px;border-right:0;border-bottom:1px solid var(--line)}
+  .tabs{width:100%;display:flex;flex-direction:row;align-items:stretch;justify-content:flex-start;gap:6px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
+  .tabs::-webkit-scrollbar{display:none}
+  .tab{flex:0 0 auto;width:auto;min-height:42px;justify-content:center;white-space:nowrap;padding:10px 13px}
+  .content{order:1}
+  .blacklist-search{margin-bottom:10px}
+}
+@media(max-width:620px){
+  .sidebar{top:64px}
+  .tabs{justify-content:flex-start}
+  .tab{min-height:40px;padding:9px 12px}
+  .content{padding-top:16px}
+  .blacklist-search{min-width:0;width:100%}
+}
