@@ -1,25 +1,40 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Socce7Ball Support</title><link rel="stylesheet" href="/style.css"></head>
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#09090b"><title>Socce7Ball Support</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+</head>
 <body>
-<header class="top"><div class="brand">SOCCE7BALL <span>SUPPORT</span></div><button id="loginBtn">Login with Discord</button></header>
+<div class="ambient ambient-a"></div><div class="ambient ambient-b"></div><div class="grid-bg"></div>
+<header class="top">
+<a class="brand" href="#"><span class="brand-mark">S7</span><span class="brand-text">SOCCE7BALL <em>SUPPORT</em></span></a>
+<div class="top-right"><span class="status-pill"><i></i> Support online</span><button id="loginBtn" class="login-btn">Login with Discord</button></div>
+</header>
 <main>
-<section class="hero" id="home"><p class="eyebrow">SOCCE7BALL SUPPORT CENTER</p><h1>How can we help?</h1><p>Open and chat in your support ticket from any device.</p><button class="primary" id="openBtn">Open a Ticket</button></section>
-<section id="app" class="panel hidden">
-<div class="userbar"><img id="avatar" alt=""><div><b id="username">User</b><small id="userid"></small></div><button id="logoutBtn">Log out</button></div>
-<nav class="tabs"><button class="tab active" id="ticketsTab">My Tickets</button><button class="tab hidden" id="staffTab">Staff</button><button class="tab" id="newTicketTab">Open Ticket</button></nav>
-<section id="ticketListView"><div class="sectionHead"><div><h2>Your Tickets</h2><p class="muted">Your support conversations.</p></div></div><div id="tickets">Loading...</div></section>
-<section id="newTicketView" class="hidden"><h2>New Ticket</h2><label>Category<select id="category"><option value="banned-appeal">Banned Appeal</option><option value="question">Question</option><option value="member-report">Member Report</option><option value="staff-report">Staff Report</option><option value="other">Other</option></select></label><label>Topic<input id="topic" placeholder="What do you need help with?"></label><label>Message<textarea id="message" rows="6" placeholder="Explain your issue..."></textarea></label><button class="primary" id="submitBtn">Create Ticket</button><p id="status"></p></section>
-<section id="staffView" class="hidden">
-<div class="sectionHead"><div><h2>Staff Mode</h2><p class="muted">Search and manage every support ticket.</p></div><button class="danger hidden" id="deleteAllBtn">Delete All Tickets</button></div>
-<div class="filters"><input id="staffSearch" placeholder="Search by player, username, ID, topic..."><select id="staffCategory"><option value="">All categories</option><option value="banned-appeal">Banned Appeal</option><option value="question">Question</option><option value="member-report">Member Report</option><option value="staff-report">Staff Report</option><option value="other">Other</option></select><select id="staffStatus"><option value="">All statuses</option><option value="open">Open</option><option value="accepted">Accepted</option><option value="declined">Declined</option><option value="closed">Closed</option><option value="resolved">Resolved</option></select><button class="tab" id="blacklistTab">Blacklist</button></div>
-<div id="staffTickets">Loading...</div>
-<div id="blacklistView" class="hidden"><div class="sectionHead"><div><h2>Blacklist</h2><p class="muted">Staff can remove a blacklist entry here.</p></div></div><div id="blacklistItems">Loading...</div></div>
-</section>
-<section id="chat" class="chat hidden">
-<div class="chatHead"><button class="backBtn" id="backBtn">Back</button><div><h2 id="chatTitle">Ticket</h2><small id="chatMeta"></small></div><div class="chatActions" id="chatActions"></div></div>
-<div id="messages" class="messages"></div>
-<div class="composer"><input id="fileInput" type="file" class="hidden"><button class="attachBtn" id="attachBtn" title="Attach file">Attach</button><input id="chatInput" placeholder="Type a message..."><button class="primary" id="sendBtn">Send</button></div><small id="fileName" class="muted"></small>
-</section>
-</section>
-</main><footer>Socce7Ball Support</footer><script src="/script.js"></script></body></html>
+<section class="hero" id="home"><div class="hero-copy"><div class="eyebrow"><span></span> SOCCE7BALL SUPPORT CENTER</div><h1>Need help?<br><strong>We’ve got you.</strong></h1><p>Get answers, report an issue, or talk directly with the Socce7Ball support team.</p><div class="hero-actions"><button class="primary hero-btn" id="openBtn"><span>Open a Ticket</span><b>→</b></button><div class="secure-note"><span class="shield">✓</span> Secure Discord sign-in</div></div></div>
+<div class="hero-art" aria-hidden="true"><div class="orb"><div class="orb-ring r1"></div><div class="orb-ring r2"></div><div class="orb-core">S7</div></div><div class="float-card card-one"><b>24/7</b><small>Support access</small></div><div class="float-card card-two"><b>FAST</b><small>Ticket handling</small></div></div></section>
+
+<section id="app" class="app-shell hidden">
+<div class="userbar"><div class="profile"><div class="avatar-wrap"><img id="avatar" alt=""></div><div><b id="username">User</b><small id="userid"></small></div></div><div class="userbar-right"><span class="member-pill">Discord member</span><button id="logoutBtn" class="ghost-btn">Log out</button></div></div>
+<div class="workspace"><aside class="sidebar"><div class="side-label">WORKSPACE</div><nav class="tabs">
+<button class="tab active" id="ticketsTab"><span class="nav-icon">▣</span><span>My Tickets</span></button>
+<button class="tab hidden" id="staffTab"><span class="nav-icon">◆</span><span>Staff Mode</span></button>
+<button class="tab" id="newTicketTab"><span class="nav-icon">＋</span><span>Open Ticket</span></button>
+</nav><div class="side-card"><div class="mini-orb">S7</div><b>Need a hand?</b><p>Choose a category and tell us what happened.</p></div></aside>
+<div class="content">
+<section id="ticketListView"><div class="sectionHead"><div><div class="page-kicker">DASHBOARD</div><h2>Your Tickets</h2><p class="muted">Your private support conversations, all in one place.</p></div><button class="primary compact" id="newTicketQuick">＋ New Ticket</button></div><div class="ticket-grid" id="tickets">Loading...</div></section>
+<section id="newTicketView" class="hidden"><div class="page-title"><div class="page-kicker">SUPPORT REQUEST</div><h2>Open a new ticket</h2><p class="muted">Give us the details and our team will take it from there.</p></div><div class="form-card"><div class="form-top"><div class="form-icon">S7</div><div><b>Tell us what’s going on</b><small>Keep it clear and specific for a faster response.</small></div></div>
+<label>Category<select id="category"><option value="banned-appeal">Banned Appeal</option><option value="question">Question</option><option value="member-report">Member Report</option><option value="staff-report">Staff Report</option><option value="other">Other</option></select></label>
+<label>Topic<input id="topic" placeholder="Short title for your issue"></label><label>Message<textarea id="message" rows="7" placeholder="Explain what happened..."></textarea></label>
+<div class="form-bottom"><span class="muted">Your Discord identity is attached automatically.</span><button class="primary" id="submitBtn">Create Ticket <b>→</b></button></div><p id="status"></p></div></section>
+<section id="staffView" class="hidden"><div class="sectionHead"><div><div class="page-kicker">STAFF WORKSPACE</div><h2>Support Queue</h2><p class="muted">Search, review, and manage support tickets.</p></div><button class="danger hidden" id="deleteAllBtn">Delete All</button></div>
+<div class="filters"><div class="search-wrap"><span>⌕</span><input id="staffSearch" placeholder="Search tickets, users, IDs, topics..."></div><select id="staffCategory"><option value="">All categories</option><option value="banned-appeal">Banned Appeal</option><option value="question">Question</option><option value="member-report">Member Report</option><option value="staff-report">Staff Report</option><option value="other">Other</option></select><select id="staffStatus"><option value="">All statuses</option><option value="open">Open</option><option value="accepted">Accepted</option><option value="declined">Declined</option><option value="closed">Closed</option><option value="resolved">Resolved</option></select><button class="tab filter-btn" id="blacklistTab">Blacklist</button></div>
+<div id="staffTickets" class="ticket-grid">Loading...</div><div id="blacklistView" class="hidden"><div class="sectionHead"><div><div class="page-kicker">SAFETY</div><h2>Blacklist</h2><p class="muted">Manage users blocked from opening tickets.</p></div></div><div id="blacklistItems" class="blacklist-card">Loading...</div></div></section>
+<section id="chat" class="chat hidden"><div class="chatHead"><button class="backBtn" id="backBtn">← <span>Back</span></button><div class="chat-heading"><div class="ticket-dot">S7</div><div><h2 id="chatTitle">Ticket</h2><small id="chatMeta"></small></div></div><div class="chatActions" id="chatActions"></div></div><div id="messages" class="messages"></div><div class="composer"><button class="attachBtn" id="attachBtn" title="Attach file">＋</button><input id="fileInput" type="file" class="hidden"><input id="chatInput" placeholder="Write a message..."><button class="primary send-btn" id="sendBtn">Send <span>↗</span></button></div><small id="fileName" class="muted file-name"></small></section>
+</div></div></section>
+</main><footer><span class="brand-mini">S7</span> Socce7Ball Support <span>•</span> Built for the community</footer>
+<script src="/script.js"></script><script>document.getElementById("newTicketQuick")?.addEventListener("click",()=>document.getElementById("newTicketTab").click());</script>
+</body></html>
