@@ -4,7 +4,7 @@ const express = require("express");
 const session = require("express-session");
 const pgSession = require("connect-pg-simple")(session);
 const { Pool } = require("pg");
-const OpenAI = require("openai");
+const { GoogleGenAI } = require("@google/genai");
 const path = require("path");
 const crypto = require("crypto");
 const { Client, GatewayIntentBits } = require("discord.js");
@@ -50,8 +50,8 @@ const STAFF_ROLE_IDS = [...new Set([
 ].map(x => String(x || "").trim()).filter(Boolean))];
 
 const SUPPORT_URL = process.env.SUPPORT_URL || "https://socce7ball-support.onrender.com";
-const OPENAI_API_KEY = process.env.AI_API_KEY || process.env.OPENAI_API_KEY;
-const openai = OPENAI_API_KEY ? new OpenAI({ apiKey: OPENAI_API_KEY }) : null;
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.AI_API_KEY;
+const gemini = GEMINI_API_KEY ? new GoogleGenAI({ apiKey: GEMINI_API_KEY }) : null;
 const botCooldowns = new Map();
 const BOT_COOLDOWN_MS = 3500;
 
@@ -386,12 +386,14 @@ async function answerDiscordMessage(message) {
     return checkBan(message, text);
   }
 
-  if (!openai) return "I can't answer right now. Please create a ticket at " + SUPPORT_URL;
+  if (!gemini) return "I can't answer right now. Please create a ticket at " + SUPPORT_URL;
 
   try {
-    const response = await openai.responses.create({
-      model: process.env.OPENAI_MODEL || "gpt-5.6-luna",
-      instructions: `You are the Socce7Ball Discord bot.
+    const response = await gemini.models.generateContent({
+      model: process.env.GEMINI_MODEL || "gemini-3.8-flash",
+      contents: text,
+      config: {
+        systemInstruction: ``You are the Socce7Ball Discord bot.
 Keep replies short, casual, friendly, and human-like. Usually 1-3 short sentences.
 You may chat, joke, play simple games, do trivia, and answer simple questions.
 Only answer about Socce7Ball, its Discord community, its website/support system, Roblox/Socce7Ball topics, or harmless casual games.
@@ -405,15 +407,14 @@ Do not use or claim to remember earlier messages. Every message is a fresh conve
 Do not generate sexual, hateful, violent, illegal, or abusive content.
 Do not help evade moderation or Discord rules.
 Never write a long essay.`,
-      input: text,
-      max_output_tokens: 120,
-      store: false
+        maxOutputTokens: 120
+      }
     });
 
-    const answer = String(response.output_text || "").trim();
+    const answer = String(response.text || "").trim();
     return (answer || "I don't know that one — create a ticket at " + SUPPORT_URL).slice(0, 900);
   } catch (e) {
-    console.error("Discord AI error:", e.message);
+    console.error("Gemini AI error:", e.message);
     return "I can't answer right now. Please create a ticket at " + SUPPORT_URL;
   }
 }
