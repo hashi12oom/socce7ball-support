@@ -357,8 +357,17 @@ client.on("messageCreate", async message => {
   if (!message.guildId || message.guildId !== process.env.DISCORD_GUILD_ID) return;
   if (!client.user || !message.mentions.has(client.user.id)) return;
 
-  const answer = await answerDiscordMessage(message);
-  if (answer) await message.reply({ content: answer, allowedMentions: { repliedUser: false } }).catch(() => {});
+  let thinkingMessage = null;
+  try {
+    thinkingMessage = await message.reply({ content: "Thinking...", allowedMentions: { repliedUser: false } });
+    const answer = await answerDiscordMessage(message);
+    if (answer && thinkingMessage) {
+      await thinkingMessage.edit({ content: answer, allowedMentions: { repliedUser: false } }).catch(() => {});
+    }
+  } catch (e) {
+    console.error("Discord AI reply error:", e.message);
+    if (thinkingMessage) await thinkingMessage.edit({ content: "I can't answer right now. Please create a ticket at " + SUPPORT_URL, allowedMentions: { repliedUser: false } }).catch(() => {});
+  }
 });
 
 async function registerSlashCommands() {
