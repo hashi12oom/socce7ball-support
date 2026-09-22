@@ -482,8 +482,8 @@ client.on("messageCreate", async message => {
   let thinkingMessage = null;
   let thinkingTimer = null;
   try {
-    thinkingMessage = await message.reply({ content: "Thinking", allowedMentions: { repliedUser: false } });
-    const frames = ["Thinking", "Thinking.", "Thinking..", "Thinking..."];
+    thinkingMessage = await message.reply({ content: ":Loading: Thinking", allowedMentions: { repliedUser: false } });
+    const frames = [":Loading: Thinking", ":Loading: Thinking.", ":Loading: Thinking..", ":Loading: Thinking..."];
     let frame = 0;
     thinkingTimer = setInterval(() => {
       frame = (frame + 1) % frames.length;
