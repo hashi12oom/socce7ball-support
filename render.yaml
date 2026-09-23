@@ -15,7 +15,7 @@ services:
       - key: DISCORD_GUILD_ID
         value: "1551038040393384037"
       - key: STAFF_ROLE_IDS
-        value: "1551038040401780855,1551038040393380854"
+        value: "1551038040401780855,1551038040401780854"
       - key: DISCORD_REDIRECT_URI
         sync: false
       - key: FRONTEND_URL
