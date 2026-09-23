@@ -231,9 +231,17 @@ app.get("/auth/callback", async (req, res) => {
       headers: { Authorization: "Bearer " + token.access_token }
     });
     const u = await ur.json();
+    if (!ur.ok || !u?.id) {
+      console.error("Discord /users/@me failed:", ur.status, u);
+      throw Error(u?.message || u?.error_description || "Discord user lookup failed.");
+    }
 
     const g = guild();
-    const member = g ? await g.members.fetch(u.id).catch(() => null) : null;
+    // Member/role lookup is optional. Login must still work if this lookup fails.
+    const member = g ? await g.members.fetch(u.id).catch(err => {
+      console.error("Discord member lookup failed:", err.message);
+      return null;
+    }) : null;
     const roleIds = member ? member.roles.cache.map(r => r.id) : [];
 
     // Do NOT require server membership. Banned users can still log in and appeal.
@@ -257,7 +265,12 @@ app.get("/auth/callback", async (req, res) => {
     };
 
     req.session.user = user;
-    await saveUser(user);
+    // A database/profile write must never prevent Discord login from succeeding.
+    try {
+      await saveUser(user);
+    } catch (err) {
+      console.error("User profile save failed during login:", err.message);
+    }
     const handoff = createAuthHandoff(user);
     res.redirect((process.env.FRONTEND_URL || "/") + "?auth=" + encodeURIComponent(handoff));
   } catch (e) {
