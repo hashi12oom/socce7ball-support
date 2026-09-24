@@ -22,7 +22,8 @@ const SHEET_TABS = {
   Blacklist: ["discord_user_id","discord_username","reason","blacklisted_by","created_at","expires_at"],
   Users: ["discord_user_id","discord_username","avatar","roles","first_seen","last_seen"],
   Bans: ["discord_user_id","discord_username","ban_status","reason","banned_by","banned_at","expires_at"],
-  StaffActions: ["action_id","staff_discord_id","staff_username","action","ticket_id","details","created_at"]
+  StaffActions: ["action_id","staff_discord_id","staff_username","action","ticket_id","details","created_at"],
+  Notifications: ["notification_id","message","ticket_id","created_at"]
 };
 let sheets = null;
 const sheetCache = new Map();
@@ -172,6 +173,28 @@ async function sendOrUpdateTicketNotification(ticket, mode = "create") {
     console.error("Ticket Discord notification error:", err.message);
     return "";
   }
+}
+async function addTicketSystemMessage(ticket, actor, message) {
+  const now = new Date().toISOString();
+  await appendRow("Messages",{message_id:crypto.randomUUID(),ticket_id:ticket.ticket_id,discord_user_id:actor.id,username:actor.username,message,sender_type:"system",created_at:now,attachment_id:"",attachment_name:"",attachment_type:""});
+  ticket.updated_at=now;
+  await updateRow("Tickets",ticket.rowNumber,ticket);
+}
+async function addGlobalNotification(message,ticketId="") {
+  await appendRow("Notifications",{notification_id:crypto.randomUUID(),message:String(message).slice(0,500),ticket_id:ticketId,created_at:new Date().toISOString()});
+}
+function ticketActionMessage(action,ticket,actor,extra="") {
+  const name=ticket.subject||"Untitled Ticket",who="@"+actor.username;
+  if(action==="claim")return 'A Ticket Called "'+name+'" has been claimed by '+who+".";
+  if(action==="unclaim")return 'A Ticket Called "'+name+'" has been unclaimed by '+who+".";
+  if(action==="close")return 'A Ticket Called "'+name+'" has been closed by '+who+".";
+  if(action==="reopen")return 'A Ticket Called "'+name+'" has been reopened by '+who+".";
+  if(action==="decline")return 'A Ticket Called "'+name+'" has been declined by '+who+".";
+  if(action==="accept")return 'A Ticket Called "'+name+'" has been accepted by '+who+".";
+  if(action==="rename")return 'A Ticket Called "'+extra+'" has been renamed by '+who+".";
+  if(action==="blacklist")return "You have been blacklisted by "+who+".";
+  if(action==="delete")return 'A Ticket Called "'+name+'" has been deleted by '+who+".";
+  return 'A Ticket Called "'+name+'" was updated by '+who+".";
 }
 const botCooldowns = new Map();
 const authHandoffs = new Map();
