@@ -420,7 +420,7 @@ app.post("/api/tickets/:id/:action",requireLogin,async(req,res)=>{
       t.status=action==="reopen"?"unclaimed":action==="close"?"closed":action==="resolve"?"resolved":action==="decline"?"declined":"accepted";
       if(action==="reopen"){t.claimed_by_id="";t.claimed_by_username="";}
     } else if(action==="rename"){
-      const n=String(req.body.name||"").trim().slice(0,80);if(!n)return res.status(400).json({error:"Name required"});renameTarget=n;t.subject=n;
+      const n=String(req.body.name||"").trim().slice(0,80);if(!n)return res.status(400).json({error:"Name required"});renameTarget=(t.subject||"Untitled Ticket")+"|||"+n;t.subject=n;
     } else if(action==="blacklist"){
       const existing=(await getRows("Blacklist")).find(x=>x.discord_user_id===t.discord_user_id);
       if(!existing) await appendRow("Blacklist",{discord_user_id:t.discord_user_id,discord_username:t.discord_username,reason:String(req.body.reason||"Blacklisted by staff").slice(0,500),blacklisted_by:actor.username,created_at:new Date().toISOString(),expires_at:String(req.body.expiresAt||"")});
