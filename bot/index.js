@@ -338,8 +338,11 @@ app.post("/api/tickets", requireLogin, async (req,res)=>{
     const blacklisted = (await getRows("Blacklist")).some(x => x.discord_user_id === req.session.user.id && (!x.expires_at || new Date(x.expires_at).getTime() > nowMs));
     if (blacklisted) return res.status(403).json({error:"You are blacklisted from opening tickets."});
     const id=crypto.randomUUID(), now=new Date().toISOString();
-    await appendRow("Tickets",{ticket_id:id,discord_user_id:req.session.user.id,discord_username:getAuthenticatedUser(req).username,discord_avatar:req.session.user.avatar||"",category,subject:topic,status:"open",created_at:now,updated_at:now});
+    const ticket={ticket_id:id,discord_user_id:req.session.user.id,discord_username:getAuthenticatedUser(req).username,discord_avatar:req.session.user.avatar||"",category,subject:topic,status:"unclaimed",claimed_by_id:"",claimed_by_username:"",discord_notification_message_id:"",created_at:now,updated_at:now};
+    await appendRow("Tickets",ticket);
     await appendRow("Messages",{message_id:crypto.randomUUID(),ticket_id:id,discord_user_id:req.session.user.id,username:req.session.user.username,message,sender_type:"user",created_at:now,attachment_id:"",attachment_name:"",attachment_type:""});
+    const notificationId=await sendOrUpdateTicketNotification({...ticket,first_message:message},"create");
+    if(notificationId){ticket.discord_notification_message_id=notificationId;const saved=(await getRows("Tickets")).find(x=>x.ticket_id===id);if(saved)await updateRow("Tickets",saved.rowNumber,ticket);}
     res.json({ticketId:id});
   }catch(e){res.status(503).json({error:e.message});}
 });
