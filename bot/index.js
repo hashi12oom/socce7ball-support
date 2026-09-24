@@ -191,7 +191,7 @@ function ticketActionMessage(action,ticket,actor,extra="") {
   if(action==="reopen")return 'A Ticket Called "'+name+'" has been reopened by '+who+".";
   if(action==="decline")return 'A Ticket Called "'+name+'" has been declined by '+who+".";
   if(action==="accept")return 'A Ticket Called "'+name+'" has been accepted by '+who+".";
-  if(action==="rename")return 'A Ticket Called "'+extra+'" has been renamed to "'+extra+'" by '+who+".";
+  if(action==="rename"){const p=String(extra).split("|||");return 'A Ticket Called "'+(p[0]||"Untitled Ticket")+'" has been renamed to "'+(p[1]||p[0]||"Untitled Ticket")+'" by '+who+".";}
   if(action==="blacklist")return "You have been blacklisted by "+who+".";
   if(action==="delete")return 'A Ticket Called "'+name+'" has been deleted by '+who+".";
   return 'A Ticket Called "'+name+'" was updated by '+who+".";
