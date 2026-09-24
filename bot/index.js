@@ -16,7 +16,7 @@ app.use(cors({ origin: allowedOrigin, credentials: true }));
 
 const SHEET_ID = process.env.GOOGLE_SHEET_ID;
 const SHEET_TABS = {
-  Tickets: ["ticket_id","discord_user_id","discord_username","discord_avatar","category","subject","status","created_at","updated_at"],
+  Tickets: ["ticket_id","discord_user_id","discord_username","discord_avatar","category","subject","status","claimed_by_id","claimed_by_username","discord_notification_message_id","created_at","updated_at"],
   Messages: ["message_id","ticket_id","discord_user_id","username","message","sender_type","created_at","attachment_id","attachment_name","attachment_type"],
   Attachments: ["attachment_id","chunk_index","data"],
   Blacklist: ["discord_user_id","discord_username","reason","blacklisted_by","created_at","expires_at"],
@@ -146,6 +146,33 @@ function hasStaffRole(member) { return !!member && STAFF_ROLE_IDS.some(id => mem
 function isFounderOrAdminMember(member) { return !!member && ((FOUNDER_ROLE_ID && member.roles.cache.has(FOUNDER_ROLE_ID)) || member.permissions.has(PermissionFlagsBits.Administrator)); }
 
 const SUPPORT_URL = process.env.SUPPORT_URL || "https://socce7ball-support.onrender.com";
+const TICKET_NOTIFICATION_CHANNEL_ID = String(process.env.TICKET_NOTIFICATION_CHANNEL_ID || "1551743893135953970").trim();
+
+async function sendOrUpdateTicketNotification(ticket, mode = "create") {
+  try {
+    const channel = await client.channels.fetch(TICKET_NOTIFICATION_CHANNEL_ID);
+    if (!channel || !channel.isTextBased()) throw Error("Ticket notification channel is not a text channel");
+    const staffRoleId = STAFF_ROLE_IDS.find(id => id === "1551038040401780854") || STAFF_ROLE_IDS[0] || "";
+    const staffMention = staffRoleId ? "<@&" + staffRoleId + ">" : "";
+    const userMention = "<@" + ticket.discord_user_id + ">";
+    const topic = ticket.subject || "No topic provided";
+    const message = String(ticket.first_message || "No message provided").slice(0, 1500);
+    const claimed = ticket.claimed_by_id ? "Claimed by <@" + ticket.claimed_by_id + ">" : "Unclaimed";
+    const content = mode === "create"
+      ? staffMention + "\n**New Support Ticket**\n" + userMention + " has opened a ticket for **" + String(ticket.category || "Other") + "**.\n**Topic:** " + topic + "\n**Message:** " + message + "\n**Status:** Unclaimed\n**Ticket ID:** " + ticket.ticket_id
+      : "**Ticket Update**\n" + userMention + " — **" + String(ticket.category || "Other") + "**\n**Topic:** " + topic + "\n**Status:** " + claimed + "\n**Ticket ID:** " + ticket.ticket_id;
+    const payload = { content, allowedMentions: { parse: [], roles: mode === "create" && staffRoleId ? [staffRoleId] : [], users: [ticket.discord_user_id] } };
+    if (mode === "update" && ticket.discord_notification_message_id) {
+      const old = await channel.messages.fetch(ticket.discord_notification_message_id).catch(() => null);
+      if (old) { await old.edit(payload); return old.id; }
+    }
+    const sent = await channel.send(payload);
+    return sent?.id || "";
+  } catch (err) {
+    console.error("Ticket Discord notification error:", err.message);
+    return "";
+  }
+}
 const botCooldowns = new Map();
 const authHandoffs = new Map();
 function createAuthHandoff(user) {
