@@ -136,7 +136,7 @@ const client = new Client({
 const guild = () => client.guilds.cache.get(process.env.DISCORD_GUILD_ID);
 let STAFF_ROLE_IDS = [...new Set([
   process.env.FOUNDER_ROLE_ID,
-  process.env.STAFF_ROLE_ID,
+  process.env.STAFF_ROLE_ID || "1551038040401780854",
   ...(process.env.STAFF_ROLE_IDS || "").split(",")
 ].map(x => String(x || "").trim()).filter(Boolean))];
 
