@@ -392,7 +392,7 @@ app.post("/api/tickets/:id/messages",requireLogin,async(req,res)=>{
     const content=String(req.body.message||"").trim().slice(0,5000); const attachment=req.body.attachment&&typeof req.body.attachment==="object"?req.body.attachment:null; if(!content&&!attachment)return res.status(400).json({error:"Message or attachment required"}); if(attachment&&(!attachment.data||String(attachment.data).length>3000000))return res.status(400).json({error:"File is too large. Maximum 2 MB."});
     const rows=await getRows("Tickets"),t=rows.find(x=>x.ticket_id===req.params.id); if(!t)return res.status(404).json({error:"Ticket not found"});
     if(!isStaff(req)&&t.discord_user_id!==req.session.user.id)return res.status(403).json({error:"No access"});
-    if(t.status==="closed")return res.status(400).json({error:"Ticket is closed"});
+    if(t.status==="closed" && !isStaff(req))return res.status(400).json({error:"Ticket is closed"});
     const now=new Date().toISOString(); const messageId=crypto.randomUUID(); const attachmentId=attachment?crypto.randomUUID():""; await appendRow("Messages",{message_id:messageId,ticket_id:req.params.id,discord_user_id:req.session.user.id,username:req.session.user.username,message:content,sender_type:isStaff(req)?"staff":"user",created_at:now,attachment_id:attachmentId,attachment_name:attachment?.name||"",attachment_type:attachment?.type||""}); if(attachment){const data=String(attachment.data); const chunkSize=45000; for(let i=0;i<data.length;i+=chunkSize) await appendRow("Attachments",{attachment_id:attachmentId,chunk_index:Math.floor(i/chunkSize),data:data.slice(i,i+chunkSize)});}
     t.updated_at=now; await updateRow("Tickets",t.rowNumber,t); res.json({ok:true});
   }catch(e){res.status(503).json({error:e.message});}
@@ -402,12 +402,15 @@ app.post("/api/tickets/:id/:action",requireLogin,async(req,res)=>{
     if(!isStaff(req))return res.status(403).json({error:"Staff only"});
     const rows=await getRows("Tickets"),t=rows.find(x=>x.ticket_id===req.params.id); if(!t)return res.status(404).json({error:"Ticket not found"});
     const action=req.params.action;
+    const actor=getAuthenticatedUser(req);
     if(action==="delete"){
+      const notification=ticketActionMessage("delete",t,actor);
+      await addGlobalNotification(notification,t.ticket_id);
       const ticketMessages=await getRows("Messages"); const attachmentIds=new Set(ticketMessages.filter(x=>x.ticket_id===t.ticket_id&&x.attachment_id).map(x=>x.attachment_id)); await deleteSheetRows("Messages",ticketMessages.filter(x=>x.ticket_id===t.ticket_id).map(x=>x.rowNumber)); const attachmentRows=await getRows("Attachments"); await deleteSheetRows("Attachments",attachmentRows.filter(x=>attachmentIds.has(x.attachment_id)).map(x=>x.rowNumber));
       await deleteSheetRows("Tickets",[t.rowNumber]);
-      return res.json({ok:true});
+      return res.json({ok:true,notification});
     }
-    const actor=getAuthenticatedUser(req);
+    let renameTarget="";
     if(action==="claim"){
       if(t.status==="claimed" && t.claimed_by_id && t.claimed_by_id!==actor.id) return res.status(409).json({error:"Ticket is already claimed by "+t.claimed_by_username});
       t.status="claimed";t.claimed_by_id=actor.id;t.claimed_by_username=actor.username;
@@ -417,16 +420,22 @@ app.post("/api/tickets/:id/:action",requireLogin,async(req,res)=>{
       t.status=action==="reopen"?"unclaimed":action==="close"?"closed":action==="resolve"?"resolved":action==="decline"?"declined":"accepted";
       if(action==="reopen"){t.claimed_by_id="";t.claimed_by_username="";}
     } else if(action==="rename"){
-      const n=String(req.body.name||"").trim().slice(0,80);if(!n)return res.status(400).json({error:"Name required"});t.subject=n;
+      const n=String(req.body.name||"").trim().slice(0,80);if(!n)return res.status(400).json({error:"Name required"});renameTarget=n;t.subject=n;
     } else if(action==="blacklist"){
       const existing=(await getRows("Blacklist")).find(x=>x.discord_user_id===t.discord_user_id);
       if(!existing) await appendRow("Blacklist",{discord_user_id:t.discord_user_id,discord_username:t.discord_username,reason:String(req.body.reason||"Blacklisted by staff").slice(0,500),blacklisted_by:actor.username,created_at:new Date().toISOString(),expires_at:String(req.body.expiresAt||"")});
+      const notification=ticketActionMessage("blacklist",t,actor);
+      await addTicketSystemMessage(t,actor,notification);
+      await addGlobalNotification(notification,t.ticket_id);
       return res.json({ok:true});
     } else return res.status(400).json({error:"Unknown action"});
     t.updated_at=new Date().toISOString();
     await updateRow("Tickets",t.rowNumber,t);
+    const notification=ticketActionMessage(action,t,actor,renameTarget);
+    await addTicketSystemMessage(t,actor,notification);
+    await addGlobalNotification(notification,t.ticket_id);
     if(action==="claim"||action==="unclaim") await sendOrUpdateTicketNotification(t,"update");
-    res.json({ok:true,claimedBy:t.claimed_by_id?{id:t.claimed_by_id,username:t.claimed_by_username}:null,status:t.status});
+    res.json({ok:true,claimedBy:t.claimed_by_id?{id:t.claimed_by_id,username:t.claimed_by_username}:null,status:t.status,notification});
   }catch(e){res.status(503).json({error:e.message});}
 });
 
