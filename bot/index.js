@@ -383,14 +383,26 @@ app.post("/api/tickets/:id/:action",requireLogin,async(req,res)=>{
       await deleteSheetRows("Tickets",[t.rowNumber]);
       return res.json({ok:true});
     }
-    if(["close","reopen","resolve","decline","accept"].includes(action))t.status=action==="reopen"?"open":action==="close"?"closed":action==="resolve"?"resolved":action==="decline"?"declined":"accepted";
-    else if(action==="rename"){const n=String(req.body.name||"").trim().slice(0,80);if(!n)return res.status(400).json({error:"Name required"});t.subject=n;}
-    else if(action==="blacklist"){
+    const actor=getAuthenticatedUser(req);
+    if(action==="claim"){
+      if(t.status==="claimed" && t.claimed_by_id && t.claimed_by_id!==actor.id) return res.status(409).json({error:"Ticket is already claimed by "+t.claimed_by_username});
+      t.status="claimed";t.claimed_by_id=actor.id;t.claimed_by_username=actor.username;
+    } else if(action==="unclaim"){
+      t.status="unclaimed";t.claimed_by_id="";t.claimed_by_username="";
+    } else if(["close","reopen","resolve","decline","accept"].includes(action)){
+      t.status=action==="reopen"?"unclaimed":action==="close"?"closed":action==="resolve"?"resolved":action==="decline"?"declined":"accepted";
+      if(action==="reopen"){t.claimed_by_id="";t.claimed_by_username="";}
+    } else if(action==="rename"){
+      const n=String(req.body.name||"").trim().slice(0,80);if(!n)return res.status(400).json({error:"Name required"});t.subject=n;
+    } else if(action==="blacklist"){
       const existing=(await getRows("Blacklist")).find(x=>x.discord_user_id===t.discord_user_id);
-      if(!existing) await appendRow("Blacklist",{discord_user_id:t.discord_user_id,discord_username:t.discord_username,reason:String(req.body.reason||"Blacklisted by staff").slice(0,500),blacklisted_by:getAuthenticatedUser(req).username,created_at:new Date().toISOString(),expires_at:String(req.body.expiresAt||"")});
+      if(!existing) await appendRow("Blacklist",{discord_user_id:t.discord_user_id,discord_username:t.discord_username,reason:String(req.body.reason||"Blacklisted by staff").slice(0,500),blacklisted_by:actor.username,created_at:new Date().toISOString(),expires_at:String(req.body.expiresAt||"")});
       return res.json({ok:true});
     } else return res.status(400).json({error:"Unknown action"});
-    t.updated_at=new Date().toISOString(); await updateRow("Tickets",t.rowNumber,t); res.json({ok:true});
+    t.updated_at=new Date().toISOString();
+    await updateRow("Tickets",t.rowNumber,t);
+    if(action==="claim"||action==="unclaim") await sendOrUpdateTicketNotification(t,"update");
+    res.json({ok:true,claimedBy:t.claimed_by_id?{id:t.claimed_by_id,username:t.claimed_by_username}:null,status:t.status});
   }catch(e){res.status(503).json({error:e.message});}
 });
 
